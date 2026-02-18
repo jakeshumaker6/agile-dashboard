@@ -11,15 +11,30 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
 from collections import defaultdict
-from flask import Flask, render_template, jsonify, request
+from functools import wraps
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "pulse-agile-dashboard-secret-key-change-in-prod")
 
 # Configuration
 CLICKUP_API_TOKEN = os.environ.get("CLICKUP_API_TOKEN", "pk_82316108_QR4V75ZD4QS2SQTBBM1U16LWQITIBQ14")
 CLICKUP_TEAM_ID = os.environ.get("CLICKUP_TEAM_ID", "90132317968")
 FIBONACCI_FIELD_ID = os.environ.get("FIBONACCI_FIELD_ID", "c88be994-51de-4bd3-b2f5-7850202b84bd")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Dashboard password (single password for all users)
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "pulse2024")
+
+
+def login_required(f):
+    """Decorator to require login for routes."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Fibonacci score option IDs (for reverse lookup)
 SCORE_OPTIONS = {
@@ -388,13 +403,37 @@ Keep each insight to 1-2 sentences. Be direct and actionable."""
 # Routes
 # =============================================================================
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Login page."""
+    error = None
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if password == DASHBOARD_PASSWORD:
+            session["authenticated"] = True
+            return redirect(url_for("dashboard"))
+        else:
+            error = "Invalid password"
+
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    """Logout and clear session."""
+    session.clear()
+    return redirect(url_for("login"))
+
+
 @app.route("/")
+@login_required
 def dashboard():
     """Serve the dashboard page."""
     return render_template("dashboard.html")
 
 
 @app.route("/api/metrics")
+@login_required
 def api_metrics():
     """Get metrics for a specific week."""
     week_offset = int(request.args.get("week_offset", 0))
@@ -407,6 +446,7 @@ def api_metrics():
 
 
 @app.route("/api/velocity")
+@login_required
 def api_velocity():
     """Get velocity history."""
     weeks = int(request.args.get("weeks", 8))
@@ -419,6 +459,7 @@ def api_velocity():
 
 
 @app.route("/api/team")
+@login_required
 def api_team():
     """Get team members."""
     members = get_team_members()
@@ -426,6 +467,7 @@ def api_team():
 
 
 @app.route("/api/insights")
+@login_required
 def api_insights():
     """Get AI-generated insights."""
     week_offset = int(request.args.get("week_offset", 0))
@@ -441,4 +483,5 @@ def api_insights():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(debug=True, port=port, host="127.0.0.1")
