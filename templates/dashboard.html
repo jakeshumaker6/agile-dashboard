@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse Agile Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        select, button {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        select:hover, button:hover {
+            border-color: #555;
+        }
+
+        button {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: white;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .card-label {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .card-value.small {
+            font-size: 24px;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #262626;
+        }
+
+        th {
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        td {
+            font-size: 14px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-on_track {
+            background: #064e3b;
+            color: #6ee7b7;
+        }
+
+        .status-over {
+            background: #7f1d1d;
+            color: #fca5a5;
+        }
+
+        .status-no_data {
+            background: #262626;
+            color: #888;
+        }
+
+        .insights-panel {
+            background: linear-gradient(135deg, #1e1b4b 0%, #1a1a2e 100%);
+            border: 1px solid #3730a3;
+        }
+
+        .insights-content {
+            font-size: 14px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+        }
+
+        .reference-panel {
+            background: #141414;
+        }
+
+        .reference-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            text-align: center;
+        }
+
+        .reference-item {
+            padding: 12px 8px;
+            background: #1a1a1a;
+            border-radius: 6px;
+        }
+
+        .reference-score {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .reference-hours {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #333;
+            border-top-color: #2563eb;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        .week-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .week-nav button {
+            background: #262626;
+            border-color: #333;
+            padding: 8px 12px;
+        }
+
+        .week-label {
+            font-size: 14px;
+            color: #888;
+            min-width: 180px;
+            text-align: center;
+        }
+
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #262626;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Pulse Agile Dashboard</h1>
+            <div class="controls">
+                <div class="week-nav">
+                    <button onclick="changeWeek(-1)" title="Previous Week">&larr;</button>
+                    <span class="week-label" id="weekLabel">Loading...</span>
+                    <button onclick="changeWeek(1)" title="Next Week">&rarr;</button>
+                </div>
+                <select id="assigneeFilter" onchange="refreshData()">
+                    <option value="">All Team Members</option>
+                </select>
+                <button onclick="refreshData()" id="refreshBtn">
+                    <span class="spinner" style="display:none" id="refreshSpinner"></span>
+                    Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="cards">
+            <div class="card">
+                <div class="card-label">Points Completed</div>
+                <div class="card-value" id="pointsCompleted">-</div>
+                <div class="card-subtitle">This week</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Points Planned</div>
+                <div class="card-value" id="pointsNextWeek">-</div>
+                <div class="card-subtitle">Next week (backlog)</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Tasks Completed</div>
+                <div class="card-value" id="tasksCompleted">-</div>
+                <div class="card-subtitle">This week</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Time Tracked</div>
+                <div class="card-value small" id="timeTracked">-</div>
+                <div class="card-subtitle">Hours this week</div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid-2">
+            <div class="panel">
+                <div class="panel-title">
+                    <span>📈</span> Weekly Velocity
+                </div>
+                <div class="chart-container">
+                    <canvas id="velocityChart"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-title">
+                    <span>📊</span> Score Distribution
+                </div>
+                <div class="chart-container">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Efficiency Table -->
+        <div class="panel" style="margin-bottom: 24px;">
+            <div class="panel-title">
+                <span>⏱️</span> Time vs Estimate by Score
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Score</th>
+                        <th>Expected Range</th>
+                        <th>Actual Avg</th>
+                        <th>Tasks</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="efficiencyTable">
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Reference and Insights -->
+        <div class="grid-2">
+            <div class="panel reference-panel">
+                <div class="panel-title">
+                    <span>📋</span> Expected Hours Reference
+                </div>
+                <div class="reference-grid">
+                    <div class="reference-item">
+                        <div class="reference-score">1</div>
+                        <div class="reference-hours">0.5-1 hr</div>
+                    </div>
+                    <div class="reference-item">
+                        <div class="reference-score">2</div>
+                        <div class="reference-hours">1-2 hrs</div>
+                    </div>
+                    <div class="reference-item">
+                        <div class="reference-score">3</div>
+                        <div class="reference-hours">2-4 hrs</div>
+                    </div>
+                    <div class="reference-item">
+                        <div class="reference-score">5</div>
+                        <div class="reference-hours">4-8 hrs</div>
+                    </div>
+                    <div class="reference-item">
+                        <div class="reference-score">8</div>
+                        <div class="reference-hours">8-16 hrs</div>
+                    </div>
+                    <div class="reference-item">
+                        <div class="reference-score">13</div>
+                        <div class="reference-hours">16-32 hrs</div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel insights-panel">
+                <div class="panel-title">
+                    <span>🤖</span> Claude Analysis
+                </div>
+                <div class="insights-content" id="insights">
+                    <div class="loading"><span class="spinner"></span> Generating insights...</div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            Pulse Agile Dashboard • Data from ClickUp • Powered by Claude
+        </footer>
+    </div>
+
+    <script>
+        let currentWeekOffset = 0;
+        let velocityChart = null;
+        let distributionChart = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTeamMembers();
+            refreshData();
+        });
+
+        async function loadTeamMembers() {
+            try {
+                const response = await fetch('/api/team');
+                const members = await response.json();
+                const select = document.getElementById('assigneeFilter');
+
+                members.forEach(member => {
+                    const option = document.createElement('option');
+                    option.value = member.id;
+                    option.textContent = member.username;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading team members:', error);
+            }
+        }
+
+        function changeWeek(delta) {
+            currentWeekOffset += delta;
+            refreshData();
+        }
+
+        async function refreshData() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            const spinner = document.getElementById('refreshSpinner');
+            refreshBtn.disabled = true;
+            spinner.style.display = 'inline-block';
+
+            const assigneeId = document.getElementById('assigneeFilter').value;
+
+            try {
+                // Load metrics
+                const metricsUrl = `/api/metrics?week_offset=${currentWeekOffset}${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
+                const metricsResponse = await fetch(metricsUrl);
+                const metrics = await metricsResponse.json();
+
+                // Update week label
+                document.getElementById('weekLabel').textContent = metrics.week.label;
+
+                // Update summary cards
+                document.getElementById('pointsCompleted').textContent = metrics.summary.points_completed;
+                document.getElementById('pointsNextWeek').textContent = metrics.summary.points_next_week;
+                document.getElementById('tasksCompleted').textContent = metrics.summary.tasks_completed;
+                document.getElementById('timeTracked').textContent = metrics.summary.total_time_hours + 'h';
+
+                // Update efficiency table
+                updateEfficiencyTable(metrics.score_metrics);
+
+                // Update distribution chart
+                updateDistributionChart(metrics.score_distribution);
+
+                // Load velocity history
+                const velocityUrl = `/api/velocity?weeks=8${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
+                const velocityResponse = await fetch(velocityUrl);
+                const velocity = await velocityResponse.json();
+                updateVelocityChart(velocity);
+
+                // Load insights
+                loadInsights(assigneeId);
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+            } finally {
+                refreshBtn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        }
+
+        function updateEfficiencyTable(scoreMetrics) {
+            const tbody = document.getElementById('efficiencyTable');
+            let html = '';
+
+            [1, 2, 3, 5, 8, 13].forEach(score => {
+                const m = scoreMetrics[score];
+                const statusClass = 'status-' + m.status;
+                const statusText = m.status === 'on_track' ? 'On Track' :
+                                   m.status === 'over' ? 'Over Estimate' : 'No Data';
+
+                html += `
+                    <tr>
+                        <td><strong>${score} pts</strong></td>
+                        <td>${m.expected_min}-${m.expected_max} hrs</td>
+                        <td>${m.actual_avg !== null ? m.actual_avg + ' hrs' : '-'}</td>
+                        <td>${m.task_count}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function updateVelocityChart(data) {
+            const ctx = document.getElementById('velocityChart').getContext('2d');
+
+            if (velocityChart) {
+                velocityChart.destroy();
+            }
+
+            velocityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.week.split(' - ')[0]),
+                    datasets: [{
+                        label: 'Points',
+                        data: data.map(d => d.points),
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#262626' },
+                            ticks: { color: '#888' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#262626' },
+                            ticks: { color: '#888' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDistributionChart(distribution) {
+            const ctx = document.getElementById('distributionChart').getContext('2d');
+
+            if (distributionChart) {
+                distributionChart.destroy();
+            }
+
+            const scores = [1, 2, 3, 5, 8, 13];
+            const colors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444', '#dc2626'];
+
+            distributionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: scores.map(s => s + ' pts'),
+                    datasets: [{
+                        label: 'Tasks',
+                        data: scores.map(s => distribution[s] || 0),
+                        backgroundColor: colors,
+                        borderRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#888' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#262626' },
+                            ticks: { color: '#888', stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadInsights(assigneeId) {
+            const insightsDiv = document.getElementById('insights');
+            insightsDiv.innerHTML = '<div class="loading"><span class="spinner"></span> Generating insights...</div>';
+
+            try {
+                const url = `/api/insights?week_offset=${currentWeekOffset}${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                insightsDiv.textContent = data.insights;
+            } catch (error) {
+                insightsDiv.textContent = 'Could not load insights.';
+            }
+        }
+    </script>
+</body>
+</html>
