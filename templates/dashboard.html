@@ -399,6 +399,11 @@
                 <div class="card-subtitle">This week</div>
             </div>
             <div class="card">
+                <div class="card-label">Points In Progress</div>
+                <div class="card-value" id="pointsInProgress">-</div>
+                <div class="card-subtitle"><span id="tasksInProgress">-</span> tasks active</div>
+            </div>
+            <div class="card">
                 <div class="card-label">Points Planned</div>
                 <div class="card-value" id="pointsNextWeek">-</div>
                 <div class="card-subtitle">Backlog for next week</div>
@@ -559,6 +564,8 @@
 
                 // Update summary cards
                 document.getElementById('pointsCompleted').textContent = metrics.summary.points_completed;
+                document.getElementById('pointsInProgress').textContent = metrics.summary.points_in_progress;
+                document.getElementById('tasksInProgress').textContent = metrics.summary.tasks_in_progress;
                 document.getElementById('pointsNextWeek').textContent = metrics.summary.points_next_week;
                 document.getElementById('tasksCompleted').textContent = metrics.summary.tasks_completed;
                 document.getElementById('timeTracked').textContent = metrics.summary.total_time_hours + 'h';

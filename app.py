@@ -136,11 +136,19 @@ def get_all_tasks():
 
 def parse_task(task: dict, folder_name: str, list_name: str) -> dict:
     """Parse a task and extract relevant fields."""
+    # Orderindex to Fibonacci score mapping (ClickUp returns orderindex as value)
+    ORDERINDEX_TO_SCORE = {0: 1, 1: 2, 2: 3, 3: 5, 4: 8, 5: 13}
+
     # Get Fibonacci score
     score = None
     for cf in task.get("custom_fields", []):
-        if cf.get("id") == FIBONACCI_FIELD_ID and cf.get("value"):
-            score = SCORE_OPTIONS.get(cf["value"])
+        if cf.get("id") == FIBONACCI_FIELD_ID and cf.get("value") is not None:
+            value = cf["value"]
+            # Handle both UUID string format and integer orderindex format
+            if isinstance(value, str):
+                score = SCORE_OPTIONS.get(value)
+            elif isinstance(value, int):
+                score = ORDERINDEX_TO_SCORE.get(value)
             break
 
     # Get status info
@@ -241,10 +249,19 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
         if not t["is_complete"] and t["status"].lower() == "backlog"
     ]
 
+    # Tasks currently in progress (not complete, not backlog)
+    in_progress_statuses = ["in progress", "in review", "doing", "active", "working"]
+    tasks_in_progress = [
+        t for t in all_tasks
+        if not t["is_complete"] and t["status"].lower() in in_progress_statuses
+    ]
+
     # Calculate points
     points_completed = sum(t["score"] or 0 for t in completed_this_week)
     points_next_week = sum(t["score"] or 0 for t in tasks_next_week)
+    points_in_progress = sum(t["score"] or 0 for t in tasks_in_progress)
     tasks_completed_count = len(completed_this_week)
+    tasks_in_progress_count = len(tasks_in_progress)
 
     # Get time entries for this week
     start_ts = int(monday.timestamp() * 1000)
@@ -310,8 +327,10 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
         },
         "summary": {
             "points_completed": points_completed,
+            "points_in_progress": points_in_progress,
             "points_next_week": points_next_week,
             "tasks_completed": tasks_completed_count,
+            "tasks_in_progress": tasks_in_progress_count,
             "total_time_hours": round(total_time_hours, 1),
         },
         "score_metrics": score_metrics,
