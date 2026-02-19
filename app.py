@@ -69,6 +69,37 @@ EXPECTED_HOURS = {
 # Excluded folders
 EXCLUDED_FOLDERS = ["Client Template"]
 
+# Default team capacity (hours per week per team member)
+# Names pulled from ClickUp workspace, hours can be overridden via UI
+DEFAULT_TEAM_CAPACITY = {
+    "Luke Shumaker": 20,
+    "Sam Gohel": 40,
+    "Jake Shumaker": 40,
+    "Sean Miller": 40,
+    "Bartosz Stoppel": 40,
+    "Razvan Crisan": 10,
+    "Adri Andika": 30,
+    "Fazail Sabri": 40,
+}
+
+def calculate_expected_points_from_hours(total_hours: float) -> float:
+    """
+    Calculate expected story points based on available team hours.
+
+    Based on the Fibonacci scoring scale:
+    - 1 pt = 0.5-1 hr (avg 0.75) → 0.75 hrs/pt
+    - 2 pt = 1-2 hrs (avg 1.5) → 0.75 hrs/pt
+    - 3 pt = 2-4 hrs (avg 3) → 1.0 hrs/pt
+    - 5 pt = 4-8 hrs (avg 6) → 1.2 hrs/pt
+    - 8 pt = 8-16 hrs (avg 12) → 1.5 hrs/pt
+    - 13 pt = 16-32 hrs (avg 24) → 1.85 hrs/pt
+
+    Using 1.5 hrs/pt to reflect team's typical 5-8 point task distribution.
+    """
+    HOURS_PER_POINT = 1.5
+
+    return round(total_hours / HOURS_PER_POINT, 0)
+
 
 def get_cached(key: str):
     """Get value from cache if not expired."""
@@ -460,7 +491,11 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
 
 
 def get_velocity_history(weeks: int = 8, assignee_id: int = None):
-    """Get velocity data for the last N weeks with baseline calculations."""
+    """Get velocity data for the last N weeks.
+
+    Note: Team Capacity and 10x Goal lines are now calculated on the frontend
+    based on the configurable team hours, not historical averages.
+    """
     history = []
 
     for offset in range(0, -weeks, -1):
@@ -475,20 +510,8 @@ def get_velocity_history(weeks: int = 8, assignee_id: int = None):
 
     history = list(reversed(history))
 
-    # Calculate baseline (average velocity over the period)
-    points_values = [w["points"] for w in history if w["points"] > 0]
-    if points_values:
-        avg_velocity = sum(points_values) / len(points_values)
-        # 10x line = 10x the average (aspirational goal)
-        ten_x_velocity = avg_velocity * 2  # More realistic: 2x average as stretch goal
-    else:
-        avg_velocity = 0
-        ten_x_velocity = 0
-
     return {
         "history": history,
-        "baseline": round(avg_velocity, 1),
-        "stretch_goal": round(ten_x_velocity, 1),
     }
 
 
@@ -728,6 +751,39 @@ def api_insights():
     insights = generate_ai_insights(metrics, velocity)
 
     return jsonify({"insights": insights})
+
+
+@app.route("/api/team-capacity")
+@login_required
+def api_team_capacity():
+    """Calculate expected points based on team hours."""
+    # Get team hours from query params (JSON format) or use defaults
+    team_hours_param = request.args.get("team_hours")
+
+    if team_hours_param:
+        try:
+            team_hours = json.loads(team_hours_param)
+        except:
+            team_hours = DEFAULT_TEAM_CAPACITY
+    else:
+        team_hours = DEFAULT_TEAM_CAPACITY
+
+    total_hours = sum(team_hours.values())
+    expected_points = calculate_expected_points_from_hours(total_hours)
+
+    return jsonify({
+        "team_hours": team_hours,
+        "total_hours": total_hours,
+        "expected_points": expected_points,
+        "hours_per_point": 1.5,  # Based on typical 5-8 point task distribution
+    })
+
+
+@app.route("/api/default-team-capacity")
+@login_required
+def api_default_team_capacity():
+    """Get default team capacity configuration."""
+    return jsonify(DEFAULT_TEAM_CAPACITY)
 
 
 if __name__ == "__main__":

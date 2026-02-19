@@ -383,6 +383,108 @@
             margin-top: 4px;
         }
 
+        .reference-example {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        /* Team capacity panel */
+        .capacity-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .capacity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+
+        .capacity-header h4 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .capacity-toggle {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .capacity-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+        }
+
+        .capacity-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: var(--bg-dark);
+            border-radius: 6px;
+        }
+
+        .capacity-item label {
+            font-size: 12px;
+            color: var(--text);
+            flex: 1;
+        }
+
+        .capacity-item input {
+            width: 50px;
+            padding: 4px 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-size: 12px;
+            text-align: right;
+        }
+
+        .capacity-item input:focus {
+            outline: none;
+            border-color: var(--pulse-primary);
+        }
+
+        .capacity-summary {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        .capacity-total {
+            color: var(--text-muted);
+        }
+
+        .capacity-total strong {
+            color: var(--text);
+        }
+
+        .capacity-expected {
+            color: var(--pulse-primary);
+            font-weight: 600;
+        }
+
+        .capacity-collapsed {
+            display: none;
+        }
+
         .loading {
             text-align: center;
             padding: 40px;
@@ -569,6 +671,24 @@
             </div>
         </div>
 
+        <!-- Team Capacity Configuration -->
+        <div class="capacity-panel" id="capacityPanel">
+            <div class="capacity-header" onclick="toggleCapacityPanel()">
+                <h4><span>⚙️</span> Team Weekly Hours</h4>
+                <span class="capacity-toggle" id="capacityToggle">▼</span>
+            </div>
+            <div class="capacity-grid capacity-collapsed" id="capacityGrid">
+                <!-- Populated by JavaScript -->
+            </div>
+            <div class="capacity-actions capacity-collapsed" id="capacityActions" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <button onclick="resetCapacityToDefaults()" style="padding: 6px 12px; font-size: 12px; background: transparent; border: 1px solid var(--border);">Reset to Defaults</button>
+            </div>
+            <div class="capacity-summary">
+                <span class="capacity-total">Total: <strong id="totalHours">0</strong> hrs/week</span>
+                <span class="capacity-expected">Expected: <strong id="expectedPoints">0</strong> pts/week</span>
+            </div>
+        </div>
+
         <!-- Charts Row -->
         <div class="grid-2">
             <div class="panel">
@@ -711,6 +831,8 @@
         let velocityChart = null;
         let distributionChart = null;
         let dailyChart = null;
+        let teamCapacity = {}; // Current team capacity configuration
+        let expectedPointsPerWeek = 0; // Calculated expected points based on capacity
 
         // Loading overlay functions
         function showLoading() {
@@ -723,9 +845,124 @@
             document.getElementById('mainContent').classList.add('loaded');
         }
 
+        // Team Capacity Functions
+        function toggleCapacityPanel() {
+            const grid = document.getElementById('capacityGrid');
+            const actions = document.getElementById('capacityActions');
+            const toggle = document.getElementById('capacityToggle');
+            const isCollapsed = grid.classList.contains('capacity-collapsed');
+
+            if (isCollapsed) {
+                grid.classList.remove('capacity-collapsed');
+                actions.classList.remove('capacity-collapsed');
+                toggle.textContent = '▲';
+            } else {
+                grid.classList.add('capacity-collapsed');
+                actions.classList.add('capacity-collapsed');
+                toggle.textContent = '▼';
+            }
+        }
+
+        async function resetCapacityToDefaults() {
+            try {
+                const response = await fetch('/api/default-team-capacity');
+                teamCapacity = await response.json();
+                localStorage.setItem('pulseTeamCapacity', JSON.stringify(teamCapacity));
+                updateCapacitySummary();
+                populateCapacityGrid();
+                refreshVelocityChart();
+            } catch (error) {
+                console.error('Error resetting capacity:', error);
+            }
+        }
+
+        async function loadTeamCapacity() {
+            // Try to load from localStorage first
+            const saved = localStorage.getItem('pulseTeamCapacity');
+            if (saved) {
+                try {
+                    teamCapacity = JSON.parse(saved);
+                    updateCapacitySummary();
+                    populateCapacityGrid();
+                    return;
+                } catch (e) {
+                    console.error('Error parsing saved capacity:', e);
+                }
+            }
+
+            // Fallback to server defaults
+            try {
+                const response = await fetch('/api/default-team-capacity');
+                teamCapacity = await response.json();
+                updateCapacitySummary();
+                populateCapacityGrid();
+            } catch (error) {
+                console.error('Error loading team capacity:', error);
+            }
+        }
+
+        function populateCapacityGrid() {
+            const grid = document.getElementById('capacityGrid');
+            let html = '';
+
+            // Sort team members alphabetically
+            const sortedMembers = Object.keys(teamCapacity).sort();
+
+            for (const name of sortedMembers) {
+                const hours = teamCapacity[name];
+                html += `
+                    <div class="capacity-item">
+                        <label>${name}</label>
+                        <input type="number"
+                               min="0"
+                               max="60"
+                               step="5"
+                               value="${hours}"
+                               data-member="${name}"
+                               onchange="updateMemberHours('${name}', this.value)">
+                    </div>
+                `;
+            }
+
+            grid.innerHTML = html;
+        }
+
+        function updateMemberHours(name, value) {
+            const hours = parseInt(value) || 0;
+            teamCapacity[name] = hours;
+
+            // Save to localStorage
+            localStorage.setItem('pulseTeamCapacity', JSON.stringify(teamCapacity));
+
+            // Update summary and chart
+            updateCapacitySummary();
+
+            // Re-fetch velocity to update chart with new capacity line
+            refreshVelocityChart();
+        }
+
+        function updateCapacitySummary() {
+            const totalHours = Object.values(teamCapacity).reduce((a, b) => a + b, 0);
+            // 1.5 hours per point based on typical 5-8 point task distribution
+            // (5pt=6h → 1.2 hrs/pt, 8pt=12h → 1.5 hrs/pt)
+            expectedPointsPerWeek = Math.round(totalHours / 1.5);
+
+            document.getElementById('totalHours').textContent = totalHours;
+            document.getElementById('expectedPoints').textContent = expectedPointsPerWeek;
+        }
+
+        async function refreshVelocityChart() {
+            const assigneeId = document.getElementById('assigneeFilter').value;
+            const velocityUrl = `/api/velocity?weeks=8${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
+            const velocityResponse = await fetch(velocityUrl);
+            const velocity = await velocityResponse.json();
+            updateVelocityChart(velocity);
+        }
+
         // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             loadTeamMembers();
+            await loadTeamCapacity(); // Load capacity first so velocity chart has the data
             refreshData(true); // true = initial load
         });
 
@@ -859,8 +1096,6 @@
 
             // Handle both old and new data formats
             const history = velocityData.history || velocityData;
-            const baseline = velocityData.baseline || 0;
-            const stretchGoal = velocityData.stretch_goal || 0;
 
             const labels = history.map(d => d.week.split(' - ')[0]);
             const pointsData = history.map(d => d.points);
@@ -878,31 +1113,30 @@
                 order: 1,
             }];
 
-            // Add baseline line if available
-            if (baseline > 0) {
+            // Add Team Capacity (Baseline) - dynamic based on configured team hours
+            if (expectedPointsPerWeek > 0) {
                 datasets.push({
-                    label: `Baseline (${baseline} pts)`,
-                    data: Array(labels.length).fill(baseline),
+                    label: `Team Capacity (${expectedPointsPerWeek} pts)`,
+                    data: Array(labels.length).fill(expectedPointsPerWeek),
                     borderColor: '#8B95A5',
                     borderDash: [5, 5],
                     borderWidth: 2,
                     pointRadius: 0,
                     fill: false,
-                    order: 2,
+                    order: 3,
                 });
-            }
 
-            // Add stretch goal line if available
-            if (stretchGoal > 0) {
+                // Add 10x Goal - aspirational engineering target (10x team capacity)
+                const tenXGoal = expectedPointsPerWeek * 10;
                 datasets.push({
-                    label: `Stretch Goal (${stretchGoal} pts)`,
-                    data: Array(labels.length).fill(stretchGoal),
+                    label: `10x Goal (${tenXGoal} pts)`,
+                    data: Array(labels.length).fill(tenXGoal),
                     borderColor: '#4ADE80',
                     borderDash: [8, 4],
                     borderWidth: 2,
                     pointRadius: 0,
                     fill: false,
-                    order: 3,
+                    order: 2,
                 });
             }
 
@@ -914,7 +1148,7 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: baseline > 0 || stretchGoal > 0,
+                            display: expectedPointsPerWeek > 0,
                             position: 'bottom',
                             labels: { color: '#8B95A5', font: { size: 11 }, usePointStyle: true }
                         }
