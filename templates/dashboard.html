@@ -65,8 +65,71 @@
         }
 
         .logo-img {
-            height: 36px;
+            height: 48px;
             width: auto;
+        }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-overlay .logo-img {
+            height: 80px;
+            margin-bottom: 24px;
+        }
+
+        .loading-text {
+            font-size: 16px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+
+        .loading-bar {
+            width: 200px;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .loading-bar-fill {
+            height: 100%;
+            background: var(--pulse-primary);
+            width: 0%;
+            transition: width 0.3s ease;
+            animation: loading-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loading-pulse {
+            0%, 100% { width: 20%; margin-left: 0; }
+            50% { width: 50%; margin-left: 25%; }
+        }
+
+        /* Hide main content initially */
+        .main-content {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .main-content.loaded {
+            opacity: 1;
         }
 
         .brand-text {
@@ -446,11 +509,20 @@
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <img src="/static/logo.png" alt="Pulse" class="logo-img">
+        <div class="loading-text">Loading dashboard...</div>
+        <div class="loading-bar">
+            <div class="loading-bar-fill"></div>
+        </div>
+    </div>
+
+    <div class="container main-content" id="mainContent">
         <header>
             <div class="logo-section">
                 <img src="/static/logo.png" alt="Pulse" class="logo-img">
-                <span class="brand-subtitle">Agile Dashboard</span>
+                <span class="brand-subtitle" style="margin-left: 8px; font-size: 14px; font-weight: 500; color: var(--text-muted);">Agile Dashboard</span>
             </div>
             <div class="controls">
                 <div class="week-nav">
@@ -458,10 +530,10 @@
                     <span class="week-label" id="weekLabel">Loading...</span>
                     <button onclick="changeWeek(1)" title="Next Week">&rarr;</button>
                 </div>
-                <select id="assigneeFilter" onchange="refreshData()">
+                <select id="assigneeFilter" onchange="refreshData(true)">
                     <option value="">All Team Members</option>
                 </select>
-                <button onclick="refreshData()" id="refreshBtn" class="primary">
+                <button onclick="refreshData(true)" id="refreshBtn" class="primary">
                     <span class="spinner" style="display:none" id="refreshSpinner"></span>
                     Refresh
                 </button>
@@ -640,10 +712,21 @@
         let distributionChart = null;
         let dailyChart = null;
 
+        // Loading overlay functions
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('mainContent').classList.remove('loaded');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            document.getElementById('mainContent').classList.add('loaded');
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             loadTeamMembers();
-            refreshData();
+            refreshData(true); // true = initial load
         });
 
         async function loadTeamMembers() {
@@ -665,14 +748,19 @@
 
         function changeWeek(delta) {
             currentWeekOffset += delta;
-            refreshData();
+            refreshData(true); // Show loading overlay for week changes
         }
 
-        async function refreshData() {
+        async function refreshData(showOverlay = false) {
             const refreshBtn = document.getElementById('refreshBtn');
             const spinner = document.getElementById('refreshSpinner');
             refreshBtn.disabled = true;
             spinner.style.display = 'inline-block';
+
+            // Show loading overlay for initial load or when requested
+            if (showOverlay) {
+                showLoading();
+            }
 
             const assigneeId = document.getElementById('assigneeFilter').value;
 
@@ -727,6 +815,8 @@
             } finally {
                 refreshBtn.disabled = false;
                 spinner.style.display = 'none';
+                // Hide loading overlay once data is loaded
+                hideLoading();
             }
         }
 
