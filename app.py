@@ -8,12 +8,17 @@ including Fibonacci points, time tracking, and efficiency analysis.
 import os
 import json
 import time
+import logging
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pulse-agile-dashboard-secret-key-change-in-prod")
@@ -84,11 +89,25 @@ def clickup_request(endpoint: str) -> dict:
     url = f"https://api.clickup.com/api/v2{endpoint}"
     req = urllib.request.Request(url, headers={"Authorization": CLICKUP_API_TOKEN})
 
+    logger.info(f"ClickUp API request: {endpoint}")
     try:
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode())
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+            logger.info(f"ClickUp API success: {endpoint} - returned {len(str(data))} chars")
+            return data
     except urllib.error.HTTPError as e:
-        print(f"ClickUp API error: {e.code}")
+        logger.error(f"ClickUp API HTTP error: {e.code} - {e.reason} for {endpoint}")
+        try:
+            error_body = e.read().decode()
+            logger.error(f"Error response: {error_body[:500]}")
+        except:
+            pass
+        return {}
+    except urllib.error.URLError as e:
+        logger.error(f"ClickUp API URL error: {e.reason} for {endpoint}")
+        return {}
+    except Exception as e:
+        logger.error(f"ClickUp API unexpected error: {str(e)} for {endpoint}")
         return {}
 
 
@@ -114,12 +133,16 @@ def get_all_tasks():
     """Fetch all tasks from ClickUp with their Fibonacci scores (cached)."""
     cached = get_cached("all_tasks")
     if cached:
+        logger.info(f"Returning {len(cached)} cached tasks")
         return cached
 
+    logger.info("Fetching all tasks from ClickUp (no cache)")
     tasks = []
 
     # Get spaces
-    spaces = clickup_request(f"/team/{CLICKUP_TEAM_ID}/space").get("spaces", [])
+    spaces_response = clickup_request(f"/team/{CLICKUP_TEAM_ID}/space")
+    spaces = spaces_response.get("spaces", [])
+    logger.info(f"Found {len(spaces)} spaces")
 
     for space in spaces:
         space_id = space["id"]
@@ -506,6 +529,53 @@ Keep each insight to 1-2 sentences. Be direct and actionable."""
 # Routes
 # =============================================================================
 
+@app.route("/health")
+def health():
+    """Health check endpoint - tests ClickUp API connection."""
+    logger.info("Health check started")
+    logger.info(f"CLICKUP_API_TOKEN: {'set (' + CLICKUP_API_TOKEN[:10] + '...)' if CLICKUP_API_TOKEN else 'NOT SET'}")
+    logger.info(f"CLICKUP_TEAM_ID: {CLICKUP_TEAM_ID}")
+    logger.info(f"FIBONACCI_FIELD_ID: {FIBONACCI_FIELD_ID}")
+
+    # Test ClickUp API connection
+    result = {
+        "status": "ok",
+        "config": {
+            "clickup_token_set": bool(CLICKUP_API_TOKEN),
+            "clickup_token_prefix": CLICKUP_API_TOKEN[:10] + "..." if CLICKUP_API_TOKEN else None,
+            "team_id": CLICKUP_TEAM_ID,
+            "fibonacci_field_id": FIBONACCI_FIELD_ID,
+        },
+        "api_test": None,
+    }
+
+    try:
+        # Test API with a simple call
+        spaces = clickup_request(f"/team/{CLICKUP_TEAM_ID}/space")
+        if spaces.get("spaces"):
+            result["api_test"] = {
+                "success": True,
+                "spaces_count": len(spaces["spaces"]),
+                "space_names": [s["name"] for s in spaces["spaces"][:3]],
+            }
+        else:
+            result["api_test"] = {
+                "success": False,
+                "error": "No spaces returned - check API token and team ID",
+                "raw_response": str(spaces)[:200],
+            }
+            result["status"] = "error"
+    except Exception as e:
+        result["api_test"] = {
+            "success": False,
+            "error": str(e),
+        }
+        result["status"] = "error"
+
+    logger.info(f"Health check result: {result}")
+    return jsonify(result)
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     """Login page."""
@@ -539,13 +609,20 @@ def dashboard():
 @login_required
 def api_metrics():
     """Get metrics for a specific week."""
-    week_offset = int(request.args.get("week_offset", 0))
-    assignee_id = request.args.get("assignee_id")
-    if assignee_id:
-        assignee_id = int(assignee_id)
+    logger.info("API metrics endpoint called")
+    try:
+        week_offset = int(request.args.get("week_offset", 0))
+        assignee_id = request.args.get("assignee_id")
+        if assignee_id:
+            assignee_id = int(assignee_id)
 
-    metrics = calculate_metrics(week_offset=week_offset, assignee_id=assignee_id)
-    return jsonify(metrics)
+        logger.info(f"Calculating metrics for week_offset={week_offset}, assignee_id={assignee_id}")
+        metrics = calculate_metrics(week_offset=week_offset, assignee_id=assignee_id)
+        logger.info(f"Metrics calculated: points_completed={metrics['summary']['points_completed']}, tasks_completed={metrics['summary']['tasks_completed']}")
+        return jsonify(metrics)
+    except Exception as e:
+        logger.error(f"Error in api_metrics: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/velocity")
