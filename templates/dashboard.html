@@ -234,6 +234,35 @@
             margin-top: 8px;
         }
 
+        /* Efficiency card with dynamic coloring */
+        .efficiency-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .efficiency-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--efficiency-color, var(--text-muted));
+        }
+
+        .efficiency-card .card-value {
+            color: var(--efficiency-color, #fff);
+        }
+
+        /* Efficiency levels */
+        .efficiency-card.level-low { --efficiency-color: #F87171; }      /* < 0.5x - red */
+        .efficiency-card.level-below { --efficiency-color: #FB923C; }    /* 0.5-1x - orange */
+        .efficiency-card.level-baseline { --efficiency-color: #8B95A5; } /* 1x - gray */
+        .efficiency-card.level-good { --efficiency-color: #4ADE80; }     /* 1-2x - green */
+        .efficiency-card.level-great { --efficiency-color: #22D3EE; }    /* 2-5x - cyan */
+        .efficiency-card.level-excellent { --efficiency-color: #A78BFA; } /* 5-10x - purple */
+        .efficiency-card.level-10x { --efficiency-color: #FBBF24; }      /* 10x+ - gold */
+
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -644,6 +673,11 @@
 
         <!-- Summary Cards -->
         <div class="cards">
+            <div class="card efficiency-card" id="efficiencyCard">
+                <div class="card-label">Efficiency</div>
+                <div class="card-value" id="efficiencyMultiplier">-</div>
+                <div class="card-subtitle" id="efficiencySubtitle">vs capacity baseline</div>
+            </div>
             <div class="card">
                 <div class="card-label">Points Completed</div>
                 <div class="card-value" id="pointsCompleted">-</div>
@@ -834,6 +868,7 @@
         let teamCapacity = {}; // Current team capacity configuration
         let expectedPointsPerWeek = 0; // Calculated expected points based on capacity (full team)
         let teamMembersList = []; // Store team members for name lookup
+        let currentPointsCompleted = 0; // Store current points for efficiency recalculation
 
         // Loading overlay functions
         function showLoading() {
@@ -940,6 +975,9 @@
 
             // Re-fetch velocity to update chart with new capacity line
             refreshVelocityChart();
+
+            // Update efficiency card with new capacity baseline
+            updateEfficiencyCard(currentPointsCompleted);
         }
 
         function updateCapacitySummary() {
@@ -1020,6 +1058,58 @@
             };
         }
 
+        // Update the efficiency multiplier card
+        function updateEfficiencyCard(pointsCompleted) {
+            const capacity = getActiveCapacity();
+            const card = document.getElementById('efficiencyCard');
+            const valueEl = document.getElementById('efficiencyMultiplier');
+            const subtitleEl = document.getElementById('efficiencySubtitle');
+
+            // Remove all level classes
+            card.classList.remove('level-low', 'level-below', 'level-baseline', 'level-good', 'level-great', 'level-excellent', 'level-10x');
+
+            if (capacity.points <= 0) {
+                valueEl.textContent = '-';
+                subtitleEl.textContent = 'Set capacity to track';
+                return;
+            }
+
+            const multiplier = pointsCompleted / capacity.points;
+            const displayMultiplier = multiplier.toFixed(1) + 'x';
+            valueEl.textContent = displayMultiplier;
+
+            // Set color level based on multiplier
+            let levelClass = 'level-baseline';
+            let subtitle = '';
+
+            if (multiplier < 0.5) {
+                levelClass = 'level-low';
+                subtitle = `${capacity.points} pts baseline`;
+            } else if (multiplier < 1) {
+                levelClass = 'level-below';
+                const ptsNeeded = capacity.points - pointsCompleted;
+                subtitle = `${ptsNeeded} pts to baseline`;
+            } else if (multiplier < 1.1) {
+                levelClass = 'level-baseline';
+                subtitle = 'At baseline';
+            } else if (multiplier < 2) {
+                levelClass = 'level-good';
+                subtitle = `${Math.round((2 - multiplier) * capacity.points)} pts to 2x`;
+            } else if (multiplier < 5) {
+                levelClass = 'level-great';
+                subtitle = `${Math.round((5 - multiplier) * capacity.points)} pts to 5x`;
+            } else if (multiplier < 10) {
+                levelClass = 'level-excellent';
+                subtitle = `${Math.round((10 - multiplier) * capacity.points)} pts to 10x`;
+            } else {
+                levelClass = 'level-10x';
+                subtitle = '10x achieved!';
+            }
+
+            card.classList.add(levelClass);
+            subtitleEl.textContent = subtitle;
+        }
+
         function changeWeek(delta) {
             currentWeekOffset += delta;
             refreshData(true); // Show loading overlay for week changes
@@ -1054,6 +1144,10 @@
                 document.getElementById('pointsNextWeek').textContent = metrics.summary.points_next_week;
                 document.getElementById('tasksCompleted').textContent = metrics.summary.tasks_completed;
                 document.getElementById('timeTracked').textContent = metrics.summary.total_time_hours + 'h';
+
+                // Update efficiency multiplier card
+                currentPointsCompleted = metrics.summary.points_completed;
+                updateEfficiencyCard(currentPointsCompleted);
 
                 // Update efficiency table
                 updateEfficiencyTable(metrics.score_metrics);
