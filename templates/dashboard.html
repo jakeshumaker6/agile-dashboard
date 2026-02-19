@@ -56,17 +56,10 @@
             gap: 16px;
         }
 
-        .logo {
+        .logo-img {
             width: 40px;
             height: 40px;
-            background: linear-gradient(135deg, var(--pulse-primary), var(--pulse-accent));
             border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 18px;
-            color: white;
         }
 
         .brand-text {
@@ -346,6 +339,65 @@
             text-align: center;
         }
 
+        .underestimated-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .underestimated-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+
+        .underestimated-item:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .underestimated-item:last-child {
+            border-bottom: none;
+        }
+
+        .underestimated-task {
+            flex: 1;
+        }
+
+        .underestimated-task a {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 13px;
+        }
+
+        .underestimated-task a:hover {
+            color: var(--pulse-primary);
+        }
+
+        .underestimated-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .underestimated-overage {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .no-data {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 24px;
+            font-size: 13px;
+        }
+
         footer {
             margin-top: 48px;
             padding-top: 24px;
@@ -369,7 +421,7 @@
     <div class="container">
         <header>
             <div class="logo-section">
-                <div class="logo">P</div>
+                <img src="https://pulsemarketing.co/wp-content/uploads/2024/09/cropped-favicon-192x192.png" alt="Pulse" class="logo-img">
                 <div class="brand-text">
                     <span class="brand-name">Pulse</span>
                     <span class="brand-subtitle">Agile Dashboard</span>
@@ -432,6 +484,35 @@
             </div>
             <div class="panel">
                 <div class="panel-title">
+                    <span>📅</span> Daily Breakdown
+                </div>
+                <div class="chart-container">
+                    <canvas id="dailyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assignee and Distribution Row -->
+        <div class="grid-2">
+            <div class="panel">
+                <div class="panel-title">
+                    <span>👥</span> Team Performance
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Team Member</th>
+                            <th>Points</th>
+                            <th>Tasks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assigneeTable">
+                        <tr><td colspan="3" class="loading"><span class="spinner"></span> Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="panel">
+                <div class="panel-title">
                     <span>📊</span> Score Distribution
                 </div>
                 <div class="chart-container">
@@ -440,25 +521,35 @@
             </div>
         </div>
 
-        <!-- Efficiency Table -->
-        <div class="panel" style="margin-bottom: 24px;">
-            <div class="panel-title">
-                <span>⏱️</span> Time vs Estimate by Score
+        <!-- Efficiency and Underestimated Row -->
+        <div class="grid-2">
+            <div class="panel">
+                <div class="panel-title">
+                    <span>⏱️</span> Time vs Estimate by Score
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Score</th>
+                            <th>Expected</th>
+                            <th>Actual Avg</th>
+                            <th>Tasks</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="efficiencyTable">
+                        <tr><td colspan="5" class="loading"><span class="spinner"></span> Loading...</td></tr>
+                    </tbody>
+                </table>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Score</th>
-                        <th>Expected Range</th>
-                        <th>Actual Avg</th>
-                        <th>Tasks</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="efficiencyTable">
-                    <tr><td colspan="5" class="loading"><span class="spinner"></span> Loading...</td></tr>
-                </tbody>
-            </table>
+            <div class="panel">
+                <div class="panel-title">
+                    <span>⚠️</span> Underestimated Tasks
+                </div>
+                <div id="underestimatedList" class="underestimated-list">
+                    <div class="loading"><span class="spinner"></span> Loading...</div>
+                </div>
+            </div>
         </div>
 
         <!-- Reference and Insights -->
@@ -516,6 +607,7 @@
         let currentWeekOffset = 0;
         let velocityChart = null;
         let distributionChart = null;
+        let dailyChart = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -575,6 +667,15 @@
 
                 // Update distribution chart
                 updateDistributionChart(metrics.score_distribution);
+
+                // Update daily breakdown chart
+                updateDailyChart(metrics.daily_breakdown);
+
+                // Update assignee table
+                updateAssigneeTable(metrics.assignee_breakdown);
+
+                // Update underestimated tasks
+                updateUnderestimatedList(metrics.underestimated_tasks);
 
                 // Load velocity history
                 const velocityUrl = `/api/velocity?weeks=8${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
@@ -700,6 +801,102 @@
                     }
                 }
             });
+        }
+
+        function updateDailyChart(dailyData) {
+            const ctx = document.getElementById('dailyChart').getContext('2d');
+
+            if (dailyChart) {
+                dailyChart.destroy();
+            }
+
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            const points = days.map(d => dailyData[d]?.points || 0);
+            const tasks = days.map(d => dailyData[d]?.tasks || 0);
+
+            dailyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: days,
+                    datasets: [{
+                        label: 'Points',
+                        data: points,
+                        backgroundColor: '#6366f1',
+                        borderRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: (context) => `${tasks[context.dataIndex]} tasks`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#737373', font: { size: 11 } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#222' },
+                            ticks: { color: '#737373', font: { size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateAssigneeTable(assignees) {
+            const tbody = document.getElementById('assigneeTable');
+
+            if (!assignees || assignees.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="no-data">No data for this period</td></tr>';
+                return;
+            }
+
+            let html = '';
+            assignees.forEach(a => {
+                html += `
+                    <tr>
+                        <td>${a.username}</td>
+                        <td><strong>${a.points}</strong></td>
+                        <td>${a.tasks}</td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function updateUnderestimatedList(tasks) {
+            const container = document.getElementById('underestimatedList');
+
+            if (!tasks || tasks.length === 0) {
+                container.innerHTML = '<div class="no-data">No underestimated tasks this week! 🎉</div>';
+                return;
+            }
+
+            let html = '';
+            tasks.forEach(t => {
+                html += `
+                    <div class="underestimated-item">
+                        <div class="underestimated-task">
+                            <a href="${t.url}" target="_blank">${t.name}</a>
+                            <div class="underestimated-meta">
+                                Score: ${t.score} pts · Expected: ≤${t.expected_max}h · Actual: ${t.actual_hours}h
+                            </div>
+                        </div>
+                        <div class="underestimated-overage">+${t.overage}h over</div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
         }
 
         async function loadInsights(assigneeId) {

@@ -7,6 +7,7 @@ including Fibonacci points, time tracking, and efficiency analysis.
 
 import os
 import json
+import time
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
@@ -16,6 +17,10 @@ from flask import Flask, render_template, jsonify, request, session, redirect, u
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pulse-agile-dashboard-secret-key-change-in-prod")
+
+# Simple in-memory cache
+_cache = {}
+CACHE_TTL = 60  # 60 seconds cache
 
 # Configuration
 CLICKUP_API_TOKEN = os.environ.get("CLICKUP_API_TOKEN", "pk_82316108_QR4V75ZD4QS2SQTBBM1U16LWQITIBQ14")
@@ -60,6 +65,20 @@ EXPECTED_HOURS = {
 EXCLUDED_FOLDERS = ["Client Template"]
 
 
+def get_cached(key: str):
+    """Get value from cache if not expired."""
+    if key in _cache:
+        value, expiry = _cache[key]
+        if time.time() < expiry:
+            return value
+    return None
+
+
+def set_cached(key: str, value, ttl: int = CACHE_TTL):
+    """Set value in cache with TTL."""
+    _cache[key] = (value, time.time() + ttl)
+
+
 def clickup_request(endpoint: str) -> dict:
     """Make a request to ClickUp API."""
     url = f"https://api.clickup.com/api/v2{endpoint}"
@@ -92,7 +111,11 @@ def get_week_bounds(date: datetime = None, week_offset: int = 0):
 
 
 def get_all_tasks():
-    """Fetch all tasks from ClickUp with their Fibonacci scores."""
+    """Fetch all tasks from ClickUp with their Fibonacci scores (cached)."""
+    cached = get_cached("all_tasks")
+    if cached:
+        return cached
+
     tasks = []
 
     # Get spaces
@@ -131,6 +154,7 @@ def get_all_tasks():
                 if task_data:
                     tasks.append(task_data)
 
+    set_cached("all_tasks", tasks)
     return tasks
 
 
@@ -193,13 +217,20 @@ def parse_task(task: dict, folder_name: str, list_name: str) -> dict:
 
 
 def get_time_entries(start_ts: int, end_ts: int, assignee_id: int = None):
-    """Fetch time entries for a date range."""
+    """Fetch time entries for a date range (cached)."""
+    cache_key = f"time_entries_{start_ts}_{end_ts}_{assignee_id}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     url = f"/team/{CLICKUP_TEAM_ID}/time_entries?start_date={start_ts}&end_date={end_ts}"
     if assignee_id:
         url += f"&assignee={assignee_id}"
 
     data = clickup_request(url)
-    return data.get("data", [])
+    result = data.get("data", [])
+    set_cached(cache_key, result)
+    return result
 
 
 def get_team_members():
@@ -319,6 +350,56 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
         if task["score"]:
             score_distribution[task["score"]] += 1
 
+    # Daily breakdown (points completed per day)
+    daily_breakdown = {}
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    for i in range(7):
+        day_date = monday + timedelta(days=i)
+        daily_breakdown[day_names[i]] = {
+            "date": day_date.strftime("%Y-%m-%d"),
+            "points": 0,
+            "tasks": 0,
+        }
+    for task in completed_this_week:
+        if task["date_closed"]:
+            day_idx = task["date_closed"].weekday()
+            day_name = day_names[day_idx]
+            daily_breakdown[day_name]["points"] += task["score"] or 0
+            daily_breakdown[day_name]["tasks"] += 1
+
+    # Assignee breakdown (points by person)
+    assignee_breakdown = defaultdict(lambda: {"points": 0, "tasks": 0, "username": ""})
+    for task in completed_this_week:
+        for assignee in task["assignees"]:
+            aid = assignee["id"]
+            assignee_breakdown[aid]["username"] = assignee["username"]
+            assignee_breakdown[aid]["points"] += task["score"] or 0
+            assignee_breakdown[aid]["tasks"] += 1
+    # Convert to list sorted by points
+    assignee_list = [
+        {"id": k, **v} for k, v in assignee_breakdown.items()
+    ]
+    assignee_list.sort(key=lambda x: x["points"], reverse=True)
+
+    # Underestimated tasks (actual time > expected max for their score)
+    underestimated_tasks = []
+    for task in completed_this_week:
+        if task["score"] and task["id"] in time_by_task:
+            actual_hours = time_by_task[task["id"]] / (1000 * 60 * 60)
+            expected_max = EXPECTED_HOURS[task["score"]]["max"]
+            if actual_hours > expected_max:
+                underestimated_tasks.append({
+                    "id": task["id"],
+                    "name": task["name"],
+                    "score": task["score"],
+                    "actual_hours": round(actual_hours, 1),
+                    "expected_max": expected_max,
+                    "overage": round(actual_hours - expected_max, 1),
+                    "url": task["url"],
+                })
+    # Sort by overage (worst first)
+    underestimated_tasks.sort(key=lambda x: x["overage"], reverse=True)
+
     return {
         "week": {
             "start": monday.strftime("%Y-%m-%d"),
@@ -335,6 +416,9 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
         },
         "score_metrics": score_metrics,
         "score_distribution": dict(score_distribution),
+        "daily_breakdown": daily_breakdown,
+        "assignee_breakdown": assignee_list,
+        "underestimated_tasks": underestimated_tasks[:10],  # Top 10 worst
         "expected_hours_reference": EXPECTED_HOURS,
     }
 
