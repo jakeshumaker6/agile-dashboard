@@ -17,15 +17,23 @@
         }
 
         :root {
-            --pulse-primary: #6366f1;
-            --pulse-primary-dark: #4f46e5;
-            --pulse-accent: #8b5cf6;
-            --bg-dark: #0a0a0a;
-            --bg-card: #111111;
-            --bg-card-hover: #1a1a1a;
-            --border: #222222;
-            --text: #e5e5e5;
-            --text-muted: #737373;
+            /* Pulse Marketing Brand Colors */
+            --pulse-primary: #E85A71;      /* Light pink/coral */
+            --pulse-primary-dark: #D14B62; /* Darker pink */
+            --pulse-accent: #F4A5AE;       /* Lighter pink */
+            --pulse-navy: #1E2A4A;         /* Navy blue */
+            --pulse-navy-light: #2D3D5E;   /* Lighter navy */
+            /* Background */
+            --bg-dark: #0F1318;            /* Dark with navy tint */
+            --bg-card: #161B24;            /* Card background */
+            --bg-card-hover: #1D242F;      /* Card hover */
+            --border: #2A3344;             /* Border with navy */
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            /* Status colors */
+            --success: #4ADE80;
+            --warning: #FBBF24;
+            --danger: #F87171;
         }
 
         body {
@@ -229,14 +237,19 @@
             font-weight: 500;
         }
 
+        .status-exceeding {
+            background: rgba(74, 222, 128, 0.15);
+            color: var(--success);
+        }
+
         .status-on_track {
-            background: rgba(34, 197, 94, 0.15);
-            color: #4ade80;
+            background: rgba(74, 222, 128, 0.15);
+            color: var(--success);
         }
 
         .status-over {
-            background: rgba(239, 68, 68, 0.15);
-            color: #f87171;
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--danger);
         }
 
         .status-no_data {
@@ -245,8 +258,8 @@
         }
 
         .insights-panel {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
-            border-color: rgba(99, 102, 241, 0.3);
+            background: linear-gradient(135deg, rgba(232, 90, 113, 0.1) 0%, rgba(30, 42, 74, 0.3) 100%);
+            border-color: rgba(232, 90, 113, 0.3);
         }
 
         .insights-content {
@@ -257,13 +270,13 @@
         }
 
         .reference-panel {
-            background: var(--bg-dark);
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--pulse-navy) 100%);
         }
 
         .reference-grid {
             display: grid;
             grid-template-columns: repeat(6, 1fr);
-            gap: 8px;
+            gap: 12px;
             text-align: center;
         }
 
@@ -274,22 +287,38 @@
         }
 
         .reference-item {
-            padding: 16px 8px;
-            background: var(--bg-card);
-            border-radius: 8px;
-            border: 1px solid var(--border);
+            padding: 20px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(232, 90, 113, 0.2);
+            transition: all 0.2s;
+        }
+
+        .reference-item:hover {
+            border-color: var(--pulse-primary);
+            background: rgba(232, 90, 113, 0.1);
+            transform: translateY(-2px);
         }
 
         .reference-score {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: 700;
-            color: #fff;
-            margin-bottom: 4px;
+            color: var(--pulse-primary);
+            margin-bottom: 6px;
         }
 
         .reference-hours {
-            font-size: 11px;
+            font-size: 12px;
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .reference-label {
+            font-size: 10px;
             color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
         }
 
         .loading {
@@ -561,27 +590,33 @@
                 <div class="reference-grid">
                     <div class="reference-item">
                         <div class="reference-score">1</div>
-                        <div class="reference-hours">0.5-1 hr</div>
+                        <div class="reference-hours">30min - 1hr</div>
+                        <div class="reference-label">Quick task</div>
                     </div>
                     <div class="reference-item">
                         <div class="reference-score">2</div>
-                        <div class="reference-hours">1-2 hrs</div>
+                        <div class="reference-hours">1 - 2 hrs</div>
+                        <div class="reference-label">Simple task</div>
                     </div>
                     <div class="reference-item">
                         <div class="reference-score">3</div>
-                        <div class="reference-hours">2-4 hrs</div>
+                        <div class="reference-hours">2 - 4 hrs</div>
+                        <div class="reference-label">Half day</div>
                     </div>
                     <div class="reference-item">
                         <div class="reference-score">5</div>
-                        <div class="reference-hours">4-8 hrs</div>
+                        <div class="reference-hours">4 - 8 hrs</div>
+                        <div class="reference-label">Full day</div>
                     </div>
                     <div class="reference-item">
                         <div class="reference-score">8</div>
-                        <div class="reference-hours">8-16 hrs</div>
+                        <div class="reference-hours">1 - 2 days</div>
+                        <div class="reference-label">Complex</div>
                     </div>
                     <div class="reference-item">
                         <div class="reference-score">13</div>
-                        <div class="reference-hours">16-32 hrs</div>
+                        <div class="reference-hours">2 - 4 days</div>
+                        <div class="reference-label">Epic</div>
                     </div>
                 </div>
             </div>
@@ -668,8 +703,13 @@
                 // Update distribution chart
                 updateDistributionChart(metrics.score_distribution);
 
-                // Update daily breakdown chart
-                updateDailyChart(metrics.daily_breakdown);
+                // Load daily averages
+                const dailyAvgUrl = `/api/daily-averages?weeks=8${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
+                const dailyAvgResponse = await fetch(dailyAvgUrl);
+                const dailyAverages = await dailyAvgResponse.json();
+
+                // Update daily breakdown chart with averages
+                updateDailyChart(metrics.daily_breakdown, dailyAverages);
 
                 // Update assignee table
                 updateAssigneeTable(metrics.assignee_breakdown);
@@ -701,15 +741,21 @@
             [1, 2, 3, 5, 8, 13].forEach(score => {
                 const m = scoreMetrics[score];
                 const statusClass = 'status-' + m.status;
-                const statusText = m.status === 'on_track' ? 'On Track' :
+                const statusText = m.status === 'exceeding' ? 'Exceeding' :
+                                   m.status === 'on_track' ? 'On Track' :
                                    m.status === 'over' ? 'Over Estimate' : 'No Data';
+
+                // Show tasks with time tracked vs total completed
+                const taskInfo = m.total_completed > 0
+                    ? `${m.task_count}/${m.total_completed}`
+                    : m.task_count;
 
                 html += `
                     <tr>
                         <td><strong>${score} pts</strong></td>
                         <td>${m.expected_min}-${m.expected_max} hrs</td>
                         <td>${m.actual_avg !== null ? m.actual_avg + ' hrs' : '-'}</td>
-                        <td>${m.task_count}</td>
+                        <td title="Tasks with time tracked / Total completed">${taskInfo}</td>
                         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     </tr>
                 `;
@@ -718,43 +764,84 @@
             tbody.innerHTML = html;
         }
 
-        function updateVelocityChart(data) {
+        function updateVelocityChart(velocityData) {
             const ctx = document.getElementById('velocityChart').getContext('2d');
 
             if (velocityChart) {
                 velocityChart.destroy();
             }
 
+            // Handle both old and new data formats
+            const history = velocityData.history || velocityData;
+            const baseline = velocityData.baseline || 0;
+            const stretchGoal = velocityData.stretch_goal || 0;
+
+            const labels = history.map(d => d.week.split(' - ')[0]);
+            const pointsData = history.map(d => d.points);
+
+            const datasets = [{
+                label: 'Points Completed',
+                data: pointsData,
+                borderColor: '#E85A71',
+                backgroundColor: 'rgba(232, 90, 113, 0.15)',
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#E85A71',
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                order: 1,
+            }];
+
+            // Add baseline line if available
+            if (baseline > 0) {
+                datasets.push({
+                    label: `Baseline (${baseline} pts)`,
+                    data: Array(labels.length).fill(baseline),
+                    borderColor: '#8B95A5',
+                    borderDash: [5, 5],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    order: 2,
+                });
+            }
+
+            // Add stretch goal line if available
+            if (stretchGoal > 0) {
+                datasets.push({
+                    label: `Stretch Goal (${stretchGoal} pts)`,
+                    data: Array(labels.length).fill(stretchGoal),
+                    borderColor: '#4ADE80',
+                    borderDash: [8, 4],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    order: 3,
+                });
+            }
+
             velocityChart = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: data.map(d => d.week.split(' - ')[0]),
-                    datasets: [{
-                        label: 'Points',
-                        data: data.map(d => d.points),
-                        borderColor: '#6366f1',
-                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                        fill: true,
-                        tension: 0.4,
-                        pointBackgroundColor: '#6366f1',
-                        pointRadius: 4,
-                    }]
-                },
+                data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: false }
+                        legend: {
+                            display: baseline > 0 || stretchGoal > 0,
+                            position: 'bottom',
+                            labels: { color: '#8B95A5', font: { size: 11 }, usePointStyle: true }
+                        }
                     },
                     scales: {
                         x: {
-                            grid: { color: '#222' },
-                            ticks: { color: '#737373', font: { size: 11 } }
+                            grid: { color: '#2A3344' },
+                            ticks: { color: '#8B95A5', font: { size: 11 } }
                         },
                         y: {
                             beginAtZero: true,
-                            grid: { color: '#222' },
-                            ticks: { color: '#737373', font: { size: 11 } }
+                            grid: { color: '#2A3344' },
+                            ticks: { color: '#8B95A5', font: { size: 11 } }
                         }
                     }
                 }
@@ -769,7 +856,8 @@
             }
 
             const scores = [1, 2, 3, 5, 8, 13];
-            const colors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444', '#dc2626'];
+            // Gradient from light pink to deep pink/red (Pulse branding)
+            const colors = ['#F4A5AE', '#EF8A96', '#E85A71', '#D14B62', '#B83B52', '#9E2B42'];
 
             distributionChart = new Chart(ctx, {
                 type: 'bar',
@@ -791,19 +879,19 @@
                     scales: {
                         x: {
                             grid: { display: false },
-                            ticks: { color: '#737373', font: { size: 11 } }
+                            ticks: { color: '#8B95A5', font: { size: 11 } }
                         },
                         y: {
                             beginAtZero: true,
-                            grid: { color: '#222' },
-                            ticks: { color: '#737373', font: { size: 11 }, stepSize: 1 }
+                            grid: { color: '#2A3344' },
+                            ticks: { color: '#8B95A5', font: { size: 11 }, stepSize: 1 }
                         }
                     }
                 }
             });
         }
 
-        function updateDailyChart(dailyData) {
+        function updateDailyChart(dailyData, dailyAverages = null) {
             const ctx = document.getElementById('dailyChart').getContext('2d');
 
             if (dailyChart) {
@@ -814,37 +902,64 @@
             const points = days.map(d => dailyData[d]?.points || 0);
             const tasks = days.map(d => dailyData[d]?.tasks || 0);
 
+            const datasets = [{
+                type: 'bar',
+                label: 'Points This Week',
+                data: points,
+                backgroundColor: '#E85A71',
+                borderRadius: 6,
+                order: 2,
+            }];
+
+            // Add average line if we have averages
+            if (dailyAverages) {
+                const avgData = days.map(d => dailyAverages[d] || 0);
+                datasets.push({
+                    type: 'line',
+                    label: 'Historical Average',
+                    data: avgData,
+                    borderColor: '#4ADE80',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#4ADE80',
+                    pointRadius: 4,
+                    fill: false,
+                    tension: 0.3,
+                    order: 1,
+                });
+            }
+
             dailyChart = new Chart(ctx, {
                 type: 'bar',
-                data: {
-                    labels: days,
-                    datasets: [{
-                        label: 'Points',
-                        data: points,
-                        backgroundColor: '#6366f1',
-                        borderRadius: 6,
-                    }]
-                },
+                data: { labels: days, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: false },
+                        legend: {
+                            display: dailyAverages !== null,
+                            position: 'bottom',
+                            labels: { color: '#8B95A5', font: { size: 11 }, usePointStyle: true }
+                        },
                         tooltip: {
                             callbacks: {
-                                afterLabel: (context) => `${tasks[context.dataIndex]} tasks`
+                                afterLabel: (context) => {
+                                    if (context.datasetIndex === 0) {
+                                        return `${tasks[context.dataIndex]} tasks`;
+                                    }
+                                    return '';
+                                }
                             }
                         }
                     },
                     scales: {
                         x: {
                             grid: { display: false },
-                            ticks: { color: '#737373', font: { size: 11 } }
+                            ticks: { color: '#8B95A5', font: { size: 11 } }
                         },
                         y: {
                             beginAtZero: true,
-                            grid: { color: '#222' },
-                            ticks: { color: '#737373', font: { size: 11 } }
+                            grid: { color: '#2A3344' },
+                            ticks: { color: '#8B95A5', font: { size: 11 } }
                         }
                     }
                 }

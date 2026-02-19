@@ -257,22 +257,28 @@ def get_time_entries(start_ts: int, end_ts: int, assignee_id: int = None):
 
 
 def get_team_members():
-    """Get all team members."""
-    # Use time entries to find unique users (more reliable than team endpoint)
-    entries = clickup_request(
-        f"/team/{CLICKUP_TEAM_ID}/time_entries?start_date=0&end_date=9999999999999"
-    ).get("data", [])
+    """Get all team members from ClickUp workspace."""
+    cached = get_cached("team_members")
+    if cached:
+        return cached
 
-    members = {}
-    for entry in entries:
-        user = entry.get("user", {})
-        if user.get("id") and user["id"] not in members:
-            members[user["id"]] = {
-                "id": user["id"],
-                "username": user.get("username", "Unknown"),
-            }
+    # Use the team endpoint to get all workspace members
+    team_data = clickup_request(f"/team/{CLICKUP_TEAM_ID}")
+    members = []
 
-    return list(members.values())
+    if team_data.get("team"):
+        for member in team_data["team"].get("members", []):
+            user = member.get("user", {})
+            if user.get("id"):
+                members.append({
+                    "id": user["id"],
+                    "username": user.get("username") or user.get("email", "Unknown"),
+                    "email": user.get("email", ""),
+                    "initials": user.get("initials", ""),
+                })
+
+    set_cached("team_members", members, ttl=300)  # Cache for 5 minutes
+    return members
 
 
 def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
@@ -341,28 +347,35 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
             time_per_score[task["score"]].append(hours)
 
     # Average and efficiency by score
+    # Also track tasks without time tracking for context
     score_metrics = {}
     for score in [1, 2, 3, 5, 8, 13]:
         times = time_per_score.get(score, [])
         avg_hours = sum(times) / len(times) if times else None
         expected = EXPECTED_HOURS[score]
 
+        # Count completed tasks at this score (with or without time tracking)
+        total_at_score = sum(1 for t in completed_this_week if t["score"] == score)
+        tasks_with_time = len(times)
+
         efficiency = None
         efficiency_status = "no_data"
         if avg_hours is not None:
-            if avg_hours <= expected["max"]:
-                efficiency = avg_hours / expected["mid"]
-                efficiency_status = "on_track" if avg_hours <= expected["max"] else "over"
+            efficiency = avg_hours / expected["mid"]
+            if avg_hours < expected["min"]:
+                efficiency_status = "exceeding"  # Faster than expected
+            elif avg_hours <= expected["max"]:
+                efficiency_status = "on_track"  # Within expected range
             else:
-                efficiency = avg_hours / expected["mid"]
-                efficiency_status = "over"
+                efficiency_status = "over"  # Taking longer than expected
 
         score_metrics[score] = {
             "expected_min": expected["min"],
             "expected_max": expected["max"],
             "expected_mid": expected["mid"],
             "actual_avg": round(avg_hours, 2) if avg_hours else None,
-            "task_count": len(times),
+            "task_count": tasks_with_time,
+            "total_completed": total_at_score,
             "efficiency": round(efficiency, 2) if efficiency else None,
             "status": efficiency_status,
         }
@@ -447,7 +460,7 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
 
 
 def get_velocity_history(weeks: int = 8, assignee_id: int = None):
-    """Get velocity data for the last N weeks."""
+    """Get velocity data for the last N weeks with baseline calculations."""
     history = []
 
     for offset in range(0, -weeks, -1):
@@ -460,7 +473,44 @@ def get_velocity_history(weeks: int = 8, assignee_id: int = None):
             "hours": metrics["summary"]["total_time_hours"],
         })
 
-    return list(reversed(history))
+    history = list(reversed(history))
+
+    # Calculate baseline (average velocity over the period)
+    points_values = [w["points"] for w in history if w["points"] > 0]
+    if points_values:
+        avg_velocity = sum(points_values) / len(points_values)
+        # 10x line = 10x the average (aspirational goal)
+        ten_x_velocity = avg_velocity * 2  # More realistic: 2x average as stretch goal
+    else:
+        avg_velocity = 0
+        ten_x_velocity = 0
+
+    return {
+        "history": history,
+        "baseline": round(avg_velocity, 1),
+        "stretch_goal": round(ten_x_velocity, 1),
+    }
+
+
+def get_daily_averages(weeks: int = 8, assignee_id: int = None):
+    """Calculate average points completed per day of week across historical data."""
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    day_totals = {day: [] for day in day_names}
+
+    for offset in range(0, -weeks, -1):
+        metrics = calculate_metrics(week_offset=offset, assignee_id=assignee_id)
+        daily = metrics["daily_breakdown"]
+        for day in day_names:
+            if daily[day]["points"] > 0:
+                day_totals[day].append(daily[day]["points"])
+
+    # Calculate averages
+    averages = {}
+    for day in day_names:
+        values = day_totals[day]
+        averages[day] = round(sum(values) / len(values), 1) if values else 0
+
+    return averages
 
 
 def generate_ai_insights(metrics: dict, velocity_history: list) -> str:
@@ -487,8 +537,13 @@ def generate_ai_insights(metrics: dict, velocity_history: list) -> str:
     prompt += f"""
 ## Velocity Trend (Last 8 Weeks)
 """
-    for week in velocity_history[-8:]:
+    history = velocity_history.get("history", velocity_history) if isinstance(velocity_history, dict) else velocity_history
+    for week in history[-8:]:
         prompt += f"- {week['week']}: {week['points']} points, {week['tasks']} tasks, {week['hours']}hrs\n"
+
+    if isinstance(velocity_history, dict):
+        prompt += f"\nBaseline velocity: {velocity_history.get('baseline', 0)} points/week\n"
+        prompt += f"Stretch goal: {velocity_history.get('stretch_goal', 0)} points/week\n"
 
     prompt += """
 Provide insights in this format:
@@ -628,14 +683,27 @@ def api_metrics():
 @app.route("/api/velocity")
 @login_required
 def api_velocity():
-    """Get velocity history."""
+    """Get velocity history with baseline."""
     weeks = int(request.args.get("weeks", 8))
     assignee_id = request.args.get("assignee_id")
     if assignee_id:
         assignee_id = int(assignee_id)
 
-    history = get_velocity_history(weeks=weeks, assignee_id=assignee_id)
-    return jsonify(history)
+    data = get_velocity_history(weeks=weeks, assignee_id=assignee_id)
+    return jsonify(data)
+
+
+@app.route("/api/daily-averages")
+@login_required
+def api_daily_averages():
+    """Get average points per day of week."""
+    weeks = int(request.args.get("weeks", 8))
+    assignee_id = request.args.get("assignee_id")
+    if assignee_id:
+        assignee_id = int(assignee_id)
+
+    averages = get_daily_averages(weeks=weeks, assignee_id=assignee_id)
+    return jsonify(averages)
 
 
 @app.route("/api/team")
