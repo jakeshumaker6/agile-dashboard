@@ -254,6 +254,9 @@ def parse_task(task: dict, folder_name: str, list_name: str) -> dict:
             "username": assignee.get("username"),
         })
 
+    # Get time spent (manual time logging on task)
+    time_spent_ms = task.get("time_spent") or 0
+
     return {
         "id": task["id"],
         "name": task["name"],
@@ -267,6 +270,7 @@ def parse_task(task: dict, folder_name: str, list_name: str) -> dict:
         "due_date": due_date,
         "assignees": assignees,
         "url": task.get("url", ""),
+        "time_spent_ms": time_spent_ms,
     }
 
 
@@ -354,27 +358,16 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
     tasks_completed_count = len(completed_this_week)
     tasks_in_progress_count = len(tasks_in_progress)
 
-    # Get time entries for this week
-    start_ts = int(monday.timestamp() * 1000)
-    end_ts = int(sunday.timestamp() * 1000)
-    time_entries = get_time_entries(start_ts, end_ts, assignee_id)
-
-    # Total time tracked (convert ms to hours)
-    total_time_ms = sum(int(e.get("duration", 0)) for e in time_entries)
+    # Get time from tasks' time_spent field (manual time logging)
+    # This is more reliable than time_entries API which only captures timer-based entries
+    total_time_ms = sum(t.get("time_spent_ms", 0) for t in completed_this_week)
     total_time_hours = total_time_ms / (1000 * 60 * 60)
 
-    # Time by task (to correlate with scores)
-    time_by_task = defaultdict(int)
-    for entry in time_entries:
-        task_id = entry.get("task", {}).get("id")
-        if task_id:
-            time_by_task[task_id] += int(entry.get("duration", 0))
-
-    # Calculate average time per score
+    # Calculate average time per score using time_spent_ms from tasks
     time_per_score = defaultdict(list)
     for task in completed_this_week:
-        if task["score"] and task["id"] in time_by_task:
-            hours = time_by_task[task["id"]] / (1000 * 60 * 60)
+        if task["score"] and task.get("time_spent_ms", 0) > 0:
+            hours = task["time_spent_ms"] / (1000 * 60 * 60)
             time_per_score[task["score"]].append(hours)
 
     # Average and efficiency by score
@@ -451,8 +444,8 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
     # Underestimated tasks (actual time > expected max for their score)
     underestimated_tasks = []
     for task in completed_this_week:
-        if task["score"] and task["id"] in time_by_task:
-            actual_hours = time_by_task[task["id"]] / (1000 * 60 * 60)
+        if task["score"] and task.get("time_spent_ms", 0) > 0:
+            actual_hours = task["time_spent_ms"] / (1000 * 60 * 60)
             expected_max = EXPECTED_HOURS[task["score"]]["max"]
             if actual_hours > expected_max:
                 underestimated_tasks.append({
