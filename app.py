@@ -11,10 +11,14 @@ import time
 import logging
 import urllib.request
 import urllib.error
+import atexit
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,9 +27,14 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pulse-agile-dashboard-secret-key-change-in-prod")
 
-# Simple in-memory cache
+# Simple in-memory cache (for short-term API response caching)
 _cache = {}
 CACHE_TTL = 60  # 60 seconds cache
+
+# Daily cache file for pre-computed dashboard data
+DAILY_CACHE_FILE = os.path.join(os.path.dirname(__file__), "daily_cache.json")
+_daily_cache = None  # In-memory copy of daily cache
+_daily_cache_loaded = False
 
 # Configuration
 CLICKUP_API_TOKEN = os.environ.get("CLICKUP_API_TOKEN", "pk_82316108_QR4V75ZD4QS2SQTBBM1U16LWQITIBQ14")
@@ -113,6 +122,136 @@ def get_cached(key: str):
 def set_cached(key: str, value, ttl: int = CACHE_TTL):
     """Set value in cache with TTL."""
     _cache[key] = (value, time.time() + ttl)
+
+
+# ============================================================================
+# Daily Cache System - Refreshes at 2pm ET daily
+# ============================================================================
+
+def load_daily_cache():
+    """Load daily cache from file into memory."""
+    global _daily_cache, _daily_cache_loaded
+
+    if _daily_cache_loaded and _daily_cache:
+        return _daily_cache
+
+    try:
+        if os.path.exists(DAILY_CACHE_FILE):
+            with open(DAILY_CACHE_FILE, 'r') as f:
+                _daily_cache = json.load(f)
+                _daily_cache_loaded = True
+                logger.info(f"Daily cache loaded from file, last updated: {_daily_cache.get('last_updated', 'unknown')}")
+                return _daily_cache
+    except Exception as e:
+        logger.error(f"Error loading daily cache: {e}")
+
+    return None
+
+
+def save_daily_cache(data: dict):
+    """Save daily cache to file."""
+    global _daily_cache, _daily_cache_loaded
+
+    try:
+        data['last_updated'] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
+        with open(DAILY_CACHE_FILE, 'w') as f:
+            json.dump(data, f)
+        _daily_cache = data
+        _daily_cache_loaded = True
+        logger.info(f"Daily cache saved at {data['last_updated']}")
+    except Exception as e:
+        logger.error(f"Error saving daily cache: {e}")
+
+
+def refresh_daily_cache():
+    """
+    Refresh the daily cache with fresh data from ClickUp.
+    This is called by the scheduler at 2pm ET daily.
+    """
+    logger.info("Starting daily cache refresh...")
+
+    try:
+        # Clear the short-term cache to force fresh API calls
+        global _cache
+        _cache = {}
+
+        cache_data = {
+            'metrics': {},
+            'velocity': {},
+            'daily_averages': {},
+            'team_members': None,
+        }
+
+        # Pre-compute metrics for current week and several weeks back
+        # (for velocity history chart)
+        for week_offset in range(0, -9, -1):  # Current week + 8 weeks history
+            try:
+                metrics = calculate_metrics(week_offset=week_offset, assignee_id=None)
+                cache_data['metrics'][f'all_{week_offset}'] = metrics
+            except Exception as e:
+                logger.error(f"Error caching metrics for week {week_offset}: {e}")
+
+        # Pre-compute velocity history
+        try:
+            velocity = get_velocity_history(weeks=8, assignee_id=None)
+            cache_data['velocity']['all'] = velocity
+        except Exception as e:
+            logger.error(f"Error caching velocity: {e}")
+
+        # Pre-compute daily averages
+        try:
+            daily_avg = get_daily_averages(weeks=8, assignee_id=None)
+            cache_data['daily_averages']['all'] = daily_avg
+        except Exception as e:
+            logger.error(f"Error caching daily averages: {e}")
+
+        # Cache team members
+        try:
+            cache_data['team_members'] = get_team_members()
+        except Exception as e:
+            logger.error(f"Error caching team members: {e}")
+
+        # Pre-compute per-assignee data for each team member
+        if cache_data['team_members']:
+            for member in cache_data['team_members']:
+                member_id = member['id']
+                try:
+                    # Current week metrics for each member
+                    metrics = calculate_metrics(week_offset=0, assignee_id=member_id)
+                    cache_data['metrics'][f'{member_id}_0'] = metrics
+
+                    # Velocity for each member
+                    velocity = get_velocity_history(weeks=8, assignee_id=member_id)
+                    cache_data['velocity'][str(member_id)] = velocity
+
+                    # Daily averages for each member
+                    daily_avg = get_daily_averages(weeks=8, assignee_id=member_id)
+                    cache_data['daily_averages'][str(member_id)] = daily_avg
+                except Exception as e:
+                    logger.error(f"Error caching data for member {member_id}: {e}")
+
+        save_daily_cache(cache_data)
+        logger.info("Daily cache refresh completed successfully")
+        return True
+
+    except Exception as e:
+        logger.error(f"Daily cache refresh failed: {e}")
+        return False
+
+
+def get_from_daily_cache(data_type: str, key: str):
+    """
+    Get data from daily cache.
+    Returns None if not found (will fall back to live data).
+    """
+    cache = load_daily_cache()
+    if not cache:
+        return None
+
+    if data_type in cache and key in cache[data_type]:
+        return cache[data_type][key]
+
+    return None
 
 
 def clickup_request(endpoint: str) -> dict:
@@ -687,6 +826,13 @@ def api_metrics():
         if assignee_id:
             assignee_id = int(assignee_id)
 
+        # Try daily cache first for common queries
+        cache_key = f"{assignee_id or 'all'}_{week_offset}"
+        cached = get_from_daily_cache('metrics', cache_key)
+        if cached:
+            logger.info(f"Returning cached metrics for {cache_key}")
+            return jsonify(cached)
+
         logger.info(f"Calculating metrics for week_offset={week_offset}, assignee_id={assignee_id}")
         metrics = calculate_metrics(week_offset=week_offset, assignee_id=assignee_id)
         logger.info(f"Metrics calculated: points_completed={metrics['summary']['points_completed']}, tasks_completed={metrics['summary']['tasks_completed']}")
@@ -705,6 +851,13 @@ def api_velocity():
     if assignee_id:
         assignee_id = int(assignee_id)
 
+    # Try daily cache first
+    cache_key = str(assignee_id) if assignee_id else 'all'
+    cached = get_from_daily_cache('velocity', cache_key)
+    if cached:
+        logger.info(f"Returning cached velocity for {cache_key}")
+        return jsonify(cached)
+
     data = get_velocity_history(weeks=weeks, assignee_id=assignee_id)
     return jsonify(data)
 
@@ -718,6 +871,13 @@ def api_daily_averages():
     if assignee_id:
         assignee_id = int(assignee_id)
 
+    # Try daily cache first
+    cache_key = str(assignee_id) if assignee_id else 'all'
+    cached = get_from_daily_cache('daily_averages', cache_key)
+    if cached:
+        logger.info(f"Returning cached daily averages for {cache_key}")
+        return jsonify(cached)
+
     averages = get_daily_averages(weeks=weeks, assignee_id=assignee_id)
     return jsonify(averages)
 
@@ -726,6 +886,12 @@ def api_daily_averages():
 @login_required
 def api_team():
     """Get team members."""
+    # Try daily cache first
+    cache = load_daily_cache()
+    if cache and cache.get('team_members'):
+        logger.info("Returning cached team members")
+        return jsonify(cache['team_members'])
+
     members = get_team_members()
     return jsonify(members)
 
@@ -777,6 +943,72 @@ def api_team_capacity():
 def api_default_team_capacity():
     """Get default team capacity configuration."""
     return jsonify(DEFAULT_TEAM_CAPACITY)
+
+
+@app.route("/api/cache-status")
+@login_required
+def api_cache_status():
+    """Get the status of the daily cache."""
+    cache = load_daily_cache()
+    if cache:
+        return jsonify({
+            "status": "loaded",
+            "last_updated": cache.get("last_updated", "unknown"),
+            "has_metrics": bool(cache.get("metrics")),
+            "has_velocity": bool(cache.get("velocity")),
+            "has_team_members": bool(cache.get("team_members")),
+        })
+    return jsonify({"status": "no_cache"})
+
+
+@app.route("/api/refresh-cache", methods=["POST"])
+@login_required
+def api_refresh_cache():
+    """Manually trigger a cache refresh."""
+    logger.info("Manual cache refresh triggered")
+    success = refresh_daily_cache()
+    if success:
+        return jsonify({"status": "success", "message": "Cache refreshed successfully"})
+    return jsonify({"status": "error", "message": "Cache refresh failed"}), 500
+
+
+# ============================================================================
+# Scheduler Setup - Runs daily at 2pm Eastern Time
+# ============================================================================
+
+def init_scheduler():
+    """Initialize the background scheduler for daily cache refresh."""
+    scheduler = BackgroundScheduler(daemon=True)
+
+    # Schedule cache refresh at 2pm ET (14:00) every day
+    eastern = pytz.timezone('US/Eastern')
+    trigger = CronTrigger(hour=14, minute=0, timezone=eastern)
+
+    scheduler.add_job(
+        func=refresh_daily_cache,
+        trigger=trigger,
+        id='daily_cache_refresh',
+        name='Refresh ClickUp data cache at 2pm ET',
+        replace_existing=True
+    )
+
+    scheduler.start()
+    logger.info("Scheduler started - daily cache refresh scheduled for 2pm ET")
+
+    # Ensure scheduler shuts down cleanly
+    atexit.register(lambda: scheduler.shutdown())
+
+    return scheduler
+
+
+# Initialize scheduler when module loads (for production via gunicorn)
+# Only start if not in debug reload mode
+if os.environ.get('WERKZEUG_RUN_MAIN') != 'true' or not app.debug:
+    # Check if cache exists, if not do initial load
+    if not os.path.exists(DAILY_CACHE_FILE):
+        logger.info("No daily cache found - will refresh on first request or at 2pm ET")
+
+    _scheduler = init_scheduler()
 
 
 if __name__ == "__main__":

@@ -189,6 +189,28 @@
             cursor: not-allowed;
         }
 
+        /* Cache status indicator */
+        .cache-status {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cache-status.syncing {
+            border-color: var(--pulse-primary);
+        }
+
+        .cache-status.fresh {
+            border-color: #4ADE80;
+        }
+
         .cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -668,8 +690,15 @@
                     <span class="spinner" style="display:none" id="refreshSpinner"></span>
                     Refresh
                 </button>
+                <button onclick="syncFromClickUp()" id="syncBtn" title="Sync fresh data from ClickUp (updates daily at 2pm ET)">
+                    <span class="spinner" style="display:none" id="syncSpinner"></span>
+                    Sync ClickUp
+                </button>
             </div>
         </header>
+        <div class="cache-status" id="cacheStatus">
+            <span id="cacheStatusText">Data: Loading...</span>
+        </div>
 
         <!-- Summary Cards -->
         <div class="cards">
@@ -998,8 +1027,78 @@
             updateVelocityChart(velocity);
         }
 
+        // Cache status functions
+        async function loadCacheStatus() {
+            try {
+                const response = await fetch('/api/cache-status');
+                const status = await response.json();
+                updateCacheStatusDisplay(status);
+            } catch (error) {
+                console.error('Error loading cache status:', error);
+                document.getElementById('cacheStatusText').textContent = 'Data: Live (no cache)';
+            }
+        }
+
+        function updateCacheStatusDisplay(status) {
+            const statusEl = document.getElementById('cacheStatus');
+            const textEl = document.getElementById('cacheStatusText');
+
+            if (status.status === 'loaded' && status.last_updated) {
+                const lastUpdated = new Date(status.last_updated);
+                const now = new Date();
+                const hoursAgo = Math.round((now - lastUpdated) / (1000 * 60 * 60));
+
+                if (hoursAgo < 24) {
+                    textEl.textContent = `Data cached ${hoursAgo}h ago (refreshes daily at 2pm ET)`;
+                    statusEl.classList.add('fresh');
+                    statusEl.classList.remove('syncing');
+                } else {
+                    textEl.textContent = `Data cached ${hoursAgo}h ago - consider syncing`;
+                    statusEl.classList.remove('fresh', 'syncing');
+                }
+            } else {
+                textEl.textContent = 'Data: Live from ClickUp (no cache yet)';
+                statusEl.classList.remove('fresh', 'syncing');
+            }
+        }
+
+        async function syncFromClickUp() {
+            const syncBtn = document.getElementById('syncBtn');
+            const spinner = document.getElementById('syncSpinner');
+            const statusEl = document.getElementById('cacheStatus');
+            const textEl = document.getElementById('cacheStatusText');
+
+            syncBtn.disabled = true;
+            spinner.style.display = 'inline-block';
+            statusEl.classList.add('syncing');
+            textEl.textContent = 'Syncing fresh data from ClickUp...';
+
+            try {
+                const response = await fetch('/api/refresh-cache', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    textEl.textContent = 'Sync complete! Refreshing dashboard...';
+                    // Reload cache status and refresh data
+                    await loadCacheStatus();
+                    await refreshData(true);
+                } else {
+                    textEl.textContent = 'Sync failed - using live data';
+                    statusEl.classList.remove('syncing');
+                }
+            } catch (error) {
+                console.error('Error syncing:', error);
+                textEl.textContent = 'Sync failed - using live data';
+                statusEl.classList.remove('syncing');
+            } finally {
+                syncBtn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
+            loadCacheStatus(); // Show cache status
             loadTeamMembers();
             await loadTeamCapacity(); // Load capacity first so velocity chart has the data
             refreshData(true); // true = initial load
