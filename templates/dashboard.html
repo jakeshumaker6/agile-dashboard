@@ -832,7 +832,8 @@
         let distributionChart = null;
         let dailyChart = null;
         let teamCapacity = {}; // Current team capacity configuration
-        let expectedPointsPerWeek = 0; // Calculated expected points based on capacity
+        let expectedPointsPerWeek = 0; // Calculated expected points based on capacity (full team)
+        let teamMembersList = []; // Store team members for name lookup
 
         // Loading overlay functions
         function showLoading() {
@@ -970,6 +971,7 @@
             try {
                 const response = await fetch('/api/team');
                 const members = await response.json();
+                teamMembersList = members; // Store for later lookup
                 const select = document.getElementById('assigneeFilter');
 
                 members.forEach(member => {
@@ -981,6 +983,41 @@
             } catch (error) {
                 console.error('Error loading team members:', error);
             }
+        }
+
+        // Get the selected member's name from the dropdown
+        function getSelectedMemberName() {
+            const select = document.getElementById('assigneeFilter');
+            if (!select.value) return null; // "All Team Members" selected
+            const selectedOption = select.options[select.selectedIndex];
+            return selectedOption ? selectedOption.textContent : null;
+        }
+
+        // Calculate expected points for the current filter (team or individual)
+        function getActiveCapacity() {
+            const memberName = getSelectedMemberName();
+
+            if (!memberName) {
+                // Full team - use total hours
+                const totalHours = Object.values(teamCapacity).reduce((a, b) => a + b, 0);
+                return {
+                    hours: totalHours,
+                    points: Math.round(totalHours / 1.5),
+                    label: 'Team Capacity',
+                    goalLabel: '10x Goal',
+                    isIndividual: false
+                };
+            }
+
+            // Individual - look up their hours
+            const individualHours = teamCapacity[memberName] || 0;
+            return {
+                hours: individualHours,
+                points: Math.round(individualHours / 1.5),
+                label: `${memberName.split(' ')[0]}'s Capacity`,
+                goalLabel: '10x Goal',
+                isIndividual: true
+            };
         }
 
         function changeWeek(delta) {
@@ -1113,11 +1150,12 @@
                 order: 1,
             }];
 
-            // Add Team Capacity (Baseline) - dynamic based on configured team hours
-            if (expectedPointsPerWeek > 0) {
+            // Add Capacity line - dynamic based on team or individual filter
+            const capacity = getActiveCapacity();
+            if (capacity.points > 0) {
                 datasets.push({
-                    label: `Team Capacity (${expectedPointsPerWeek} pts)`,
-                    data: Array(labels.length).fill(expectedPointsPerWeek),
+                    label: `${capacity.label} (${capacity.points} pts)`,
+                    data: Array(labels.length).fill(capacity.points),
                     borderColor: '#8B95A5',
                     borderDash: [5, 5],
                     borderWidth: 2,
@@ -1126,10 +1164,10 @@
                     order: 3,
                 });
 
-                // Add 10x Goal - aspirational engineering target (10x team capacity)
-                const tenXGoal = expectedPointsPerWeek * 10;
+                // Add 10x Goal - aspirational engineering target
+                const tenXGoal = capacity.points * 10;
                 datasets.push({
-                    label: `10x Goal (${tenXGoal} pts)`,
+                    label: `${capacity.goalLabel} (${tenXGoal} pts)`,
                     data: Array(labels.length).fill(tenXGoal),
                     borderColor: '#4ADE80',
                     borderDash: [8, 4],
@@ -1148,7 +1186,7 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: expectedPointsPerWeek > 0,
+                            display: capacity.points > 0,
                             position: 'bottom',
                             labels: { color: '#8B95A5', font: { size: 11 }, usePointStyle: true }
                         }
