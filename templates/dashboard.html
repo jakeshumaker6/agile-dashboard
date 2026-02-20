@@ -276,14 +276,10 @@
             color: var(--efficiency-color, #fff);
         }
 
-        /* Efficiency levels */
-        .efficiency-card.level-low { --efficiency-color: #F87171; }      /* < 0.5x - red */
-        .efficiency-card.level-below { --efficiency-color: #FB923C; }    /* 0.5-1x - orange */
-        .efficiency-card.level-baseline { --efficiency-color: #8B95A5; } /* 1x - gray */
-        .efficiency-card.level-good { --efficiency-color: #4ADE80; }     /* 1-2x - green */
-        .efficiency-card.level-great { --efficiency-color: #22D3EE; }    /* 2-5x - cyan */
-        .efficiency-card.level-excellent { --efficiency-color: #A78BFA; } /* 5-10x - purple */
-        .efficiency-card.level-10x { --efficiency-color: #FBBF24; }      /* 10x+ - gold */
+        /* Efficiency levels - yellow (0-6x), green (6-10x), gold (10x+) */
+        .efficiency-card.level-yellow { --efficiency-color: #FBBF24; }   /* 0-6x - yellow */
+        .efficiency-card.level-green { --efficiency-color: #4ADE80; }    /* 6-10x - green */
+        .efficiency-card.level-10x { --efficiency-color: #FFD700; }      /* 10x+ - gold */
 
         .grid-2 {
             display: grid;
@@ -729,7 +725,7 @@
             </div>
             <div class="card">
                 <div class="card-label">Time Tracked</div>
-                <div class="card-value small" id="timeTracked">-</div>
+                <div class="card-value" id="timeTracked">-</div>
                 <div class="card-subtitle">Hours this week</div>
             </div>
         </div>
@@ -1165,7 +1161,7 @@
             const subtitleEl = document.getElementById('efficiencySubtitle');
 
             // Remove all level classes
-            card.classList.remove('level-low', 'level-below', 'level-baseline', 'level-good', 'level-great', 'level-excellent', 'level-10x');
+            card.classList.remove('level-yellow', 'level-green', 'level-10x');
 
             if (capacity.points <= 0) {
                 valueEl.textContent = '-';
@@ -1177,28 +1173,15 @@
             const displayMultiplier = multiplier.toFixed(1) + 'x';
             valueEl.textContent = displayMultiplier;
 
-            // Set color level based on multiplier
-            let levelClass = 'level-baseline';
+            // Set color level based on multiplier: yellow (0-6x), green (6-10x), gold (10x+)
+            let levelClass = 'level-yellow';
             let subtitle = '';
 
-            if (multiplier < 0.5) {
-                levelClass = 'level-low';
-                subtitle = `${capacity.points} pts baseline`;
-            } else if (multiplier < 1) {
-                levelClass = 'level-below';
-                const ptsNeeded = capacity.points - pointsCompleted;
-                subtitle = `${ptsNeeded} pts to baseline`;
-            } else if (multiplier < 1.1) {
-                levelClass = 'level-baseline';
-                subtitle = 'At baseline';
-            } else if (multiplier < 2) {
-                levelClass = 'level-good';
-                subtitle = `${Math.round((2 - multiplier) * capacity.points)} pts to 2x`;
-            } else if (multiplier < 5) {
-                levelClass = 'level-great';
-                subtitle = `${Math.round((5 - multiplier) * capacity.points)} pts to 5x`;
+            if (multiplier < 6) {
+                levelClass = 'level-yellow';
+                subtitle = `${Math.round((6 - multiplier) * capacity.points)} pts to 6x`;
             } else if (multiplier < 10) {
-                levelClass = 'level-excellent';
+                levelClass = 'level-green';
                 subtitle = `${Math.round((10 - multiplier) * capacity.points)} pts to 10x`;
             } else {
                 levelClass = 'level-10x';
@@ -1462,12 +1445,12 @@
                 order: 2,
             }];
 
-            // Add average line if we have averages
+            // Add per-day historical average line if we have averages
             if (dailyAverages) {
                 const avgData = days.map(d => dailyAverages[d] || 0);
                 datasets.push({
                     type: 'line',
-                    label: 'Historical Average',
+                    label: 'Per-Day Avg',
                     data: avgData,
                     borderColor: '#4ADE80',
                     borderWidth: 2,
@@ -1477,6 +1460,23 @@
                     tension: 0.3,
                     order: 1,
                 });
+
+                // Calculate overall daily average (total average across all days)
+                const allDayAvgs = days.map(d => dailyAverages[d] || 0);
+                const overallDailyAvg = allDayAvgs.reduce((a, b) => a + b, 0) / allDayAvgs.filter(v => v > 0).length || 0;
+                if (overallDailyAvg > 0) {
+                    datasets.push({
+                        type: 'line',
+                        label: `Daily Avg (${overallDailyAvg.toFixed(1)} pts)`,
+                        data: Array(7).fill(overallDailyAvg),
+                        borderColor: '#8B95A5',
+                        borderDash: [5, 5],
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false,
+                        order: 0,
+                    });
+                }
             }
 
             dailyChart = new Chart(ctx, {
@@ -1487,7 +1487,7 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: dailyAverages !== null,
+                            display: datasets.length > 1,
                             position: 'bottom',
                             labels: { color: '#8B95A5', font: { size: 11 }, usePointStyle: true }
                         },
