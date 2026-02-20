@@ -382,16 +382,23 @@ def get_week_bounds(date: datetime = None, week_offset: int = 0):
 
 
 def get_all_tasks():
-    """Fetch all tasks from ClickUp with their Fibonacci scores (cached)."""
+    """Fetch all tasks from ClickUp with their Fibonacci scores (cached).
+
+    Uses a two-pass approach to identify parent tasks:
+    1. First pass: collect all tasks and identify parent IDs (from subtask's parent field)
+    2. Second pass: parse tasks, excluding parent tasks that have subtasks
+    """
     cached = get_cached("all_tasks")
     if cached:
         logger.info(f"Returning {len(cached)} cached tasks")
         return cached
 
     logger.info("Fetching all tasks from ClickUp (no cache)")
-    tasks = []
 
-    # Get spaces
+    # First pass: collect all raw tasks and identify parent task IDs
+    raw_tasks = []
+    parent_task_ids = set()
+
     spaces_response = clickup_request(f"/team/{CLICKUP_TEAM_ID}/space")
     spaces = spaces_response.get("spaces", [])
     logger.info(f"Found {len(spaces)} spaces")
@@ -413,9 +420,16 @@ def get_all_tasks():
                 ).get("tasks", [])
 
                 for task in list_tasks:
-                    task_data = parse_task(task, folder_name, lst["name"])
-                    if task_data:
-                        tasks.append(task_data)
+                    # Track parent IDs (tasks that have subtasks)
+                    parent_id = task.get("parent")
+                    if parent_id:
+                        parent_task_ids.add(parent_id)
+
+                    raw_tasks.append({
+                        "task": task,
+                        "folder_name": folder_name,
+                        "list_name": lst["name"]
+                    })
 
         # Folderless lists
         folderless = clickup_request(f"/space/{space_id}/list").get("lists", [])
@@ -425,34 +439,45 @@ def get_all_tasks():
             ).get("tasks", [])
 
             for task in list_tasks:
-                task_data = parse_task(task, "(No Folder)", lst["name"])
-                if task_data:
-                    tasks.append(task_data)
+                parent_id = task.get("parent")
+                if parent_id:
+                    parent_task_ids.add(parent_id)
 
+                raw_tasks.append({
+                    "task": task,
+                    "folder_name": "(No Folder)",
+                    "list_name": lst["name"]
+                })
+
+    logger.info(f"Found {len(parent_task_ids)} parent tasks with subtasks (will be excluded)")
+
+    # Second pass: parse tasks, excluding parent tasks
+    tasks = []
+    for item in raw_tasks:
+        task_data = parse_task(item["task"], item["folder_name"], item["list_name"], parent_task_ids)
+        if task_data:
+            tasks.append(task_data)
+
+    logger.info(f"Returning {len(tasks)} tasks (after excluding parent tasks)")
     set_cached("all_tasks", tasks)
     return tasks
 
 
-def has_subtasks(task: dict) -> bool:
-    """Check if a task has subtasks (is a parent task)."""
-    subtasks = task.get("subtasks")
-    # subtasks can be a list of subtask objects or just a count
-    if isinstance(subtasks, list) and len(subtasks) > 0:
-        return True
-    if isinstance(subtasks, int) and subtasks > 0:
-        return True
-    return False
-
-
-def parse_task(task: dict, folder_name: str, list_name: str) -> dict:
+def parse_task(task: dict, folder_name: str, list_name: str, parent_task_ids: set) -> dict:
     """Parse a task and extract relevant fields.
 
     Returns None for parent tasks with subtasks (to avoid double-counting).
     Only standalone tasks and subtasks are included in metrics.
+
+    Args:
+        task: The task dict from ClickUp API
+        folder_name: The folder name
+        list_name: The list name
+        parent_task_ids: Set of task IDs that are known to have subtasks
     """
     # Skip parent tasks that have subtasks (to avoid double-counting)
     # The subtasks themselves will be counted individually
-    if has_subtasks(task):
+    if task.get("id") in parent_task_ids:
         return None
 
     # Orderindex to Fibonacci score mapping (ClickUp returns orderindex as value)
