@@ -927,9 +927,25 @@
 
         async function resetCapacityToDefaults() {
             try {
-                const response = await fetch('/api/default-team-capacity');
-                teamCapacity = await response.json();
-                localStorage.setItem('pulseTeamCapacity', JSON.stringify(teamCapacity));
+                // Fetch fresh team from ClickUp with default hours
+                const response = await fetch('/api/pulse-team');
+                const pulseTeam = await response.json();
+
+                // Build capacity with defaults
+                const defaultCapacity = {};
+                const knownOverrides = {
+                    "Luke Shumaker": 20,
+                    "Razvan Crisan": 10,
+                    "Adri Andika": 30,
+                };
+                for (const member of pulseTeam) {
+                    const name = member.username;
+                    defaultCapacity[name] = knownOverrides[name] || 40;
+                }
+
+                // Save to server
+                await saveCapacityToServer(defaultCapacity);
+                teamCapacity = defaultCapacity;
                 updateCapacitySummary();
                 populateCapacityGrid();
                 refreshVelocityChart();
@@ -939,49 +955,31 @@
         }
 
         async function loadTeamCapacity() {
-            // Always fetch current Pulse team from ClickUp to catch new members
+            // Fetch capacity from server (shared across all users)
             try {
-                const response = await fetch('/api/default-team-capacity');
-                const currentTeam = await response.json();
-
-                // Load saved settings from localStorage
-                const saved = localStorage.getItem('pulseTeamCapacity');
-                let savedCapacity = {};
-                if (saved) {
-                    try {
-                        savedCapacity = JSON.parse(saved);
-                    } catch (e) {
-                        console.error('Error parsing saved capacity:', e);
-                    }
-                }
-
-                // Merge: use saved hours for existing members, defaults for new members
-                // Only include members currently in ClickUp (removes departed members)
-                teamCapacity = {};
-                for (const name in currentTeam) {
-                    if (savedCapacity.hasOwnProperty(name)) {
-                        // Use saved hours for this member
-                        teamCapacity[name] = savedCapacity[name];
-                    } else {
-                        // New member - use default from server
-                        teamCapacity[name] = currentTeam[name];
-                    }
-                }
-
-                // Save merged capacity back to localStorage
-                localStorage.setItem('pulseTeamCapacity', JSON.stringify(teamCapacity));
-
+                const response = await fetch('/api/team-capacity');
+                teamCapacity = await response.json();
                 updateCapacitySummary();
                 populateCapacityGrid();
             } catch (error) {
                 console.error('Error loading team capacity:', error);
-                // Fallback to localStorage only if API fails
-                const saved = localStorage.getItem('pulseTeamCapacity');
-                if (saved) {
-                    teamCapacity = JSON.parse(saved);
-                    updateCapacitySummary();
-                    populateCapacityGrid();
+            }
+        }
+
+        async function saveCapacityToServer(capacity) {
+            try {
+                const response = await fetch('/api/team-capacity', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(capacity)
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to save capacity');
                 }
+                return true;
+            } catch (error) {
+                console.error('Error saving capacity:', error);
+                return false;
             }
         }
 
@@ -1011,12 +1009,12 @@
             grid.innerHTML = html;
         }
 
-        function updateMemberHours(name, value) {
+        async function updateMemberHours(name, value) {
             const hours = parseInt(value) || 0;
             teamCapacity[name] = hours;
 
-            // Save to localStorage
-            localStorage.setItem('pulseTeamCapacity', JSON.stringify(teamCapacity));
+            // Save to server (shared across all users)
+            await saveCapacityToServer(teamCapacity);
 
             // Update summary and chart
             updateCapacitySummary();

@@ -17,4 +17,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated data files
 daily_cache.json
+team_capacity.json

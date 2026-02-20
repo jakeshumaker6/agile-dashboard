@@ -36,6 +36,10 @@ DAILY_CACHE_FILE = os.path.join(os.path.dirname(__file__), "daily_cache.json")
 _daily_cache = None  # In-memory copy of daily cache
 _daily_cache_loaded = False
 
+# Team capacity config file (shared across all users)
+CAPACITY_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "team_capacity.json")
+_capacity_config = None  # In-memory copy
+
 # Configuration
 CLICKUP_API_TOKEN = os.environ.get("CLICKUP_API_TOKEN", "pk_82316108_QR4V75ZD4QS2SQTBBM1U16LWQITIBQ14")
 CLICKUP_TEAM_ID = os.environ.get("CLICKUP_TEAM_ID", "90132317968")
@@ -90,6 +94,40 @@ KNOWN_HOUR_OVERRIDES = {
 }
 
 
+def load_capacity_config():
+    """Load saved team capacity configuration from file."""
+    global _capacity_config
+
+    if _capacity_config is not None:
+        return _capacity_config
+
+    try:
+        if os.path.exists(CAPACITY_CONFIG_FILE):
+            with open(CAPACITY_CONFIG_FILE, 'r') as f:
+                _capacity_config = json.load(f)
+                logger.info(f"Capacity config loaded: {len(_capacity_config)} members")
+                return _capacity_config
+    except Exception as e:
+        logger.error(f"Error loading capacity config: {e}")
+
+    return {}
+
+
+def save_capacity_config(capacity: dict):
+    """Save team capacity configuration to file (shared across all users)."""
+    global _capacity_config
+
+    try:
+        with open(CAPACITY_CONFIG_FILE, 'w') as f:
+            json.dump(capacity, f, indent=2)
+        _capacity_config = capacity
+        logger.info(f"Capacity config saved: {len(capacity)} members")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving capacity config: {e}")
+        return False
+
+
 def get_pulse_team_members():
     """
     Get team members filtered to only @pulsemarketing.co emails.
@@ -106,20 +144,27 @@ def get_pulse_team_members():
     return pulse_members
 
 
-def build_team_capacity_from_clickup():
+def build_team_capacity():
     """
-    Build team capacity dict from current ClickUp Pulse team members.
-    New members get default hours, known overrides are applied.
+    Build team capacity dict merging:
+    1. Current Pulse team members from ClickUp
+    2. Saved capacity config (user customizations)
+    3. Known hour overrides for new members
     """
     pulse_members = get_pulse_team_members()
+    saved_config = load_capacity_config()
     capacity = {}
 
     for member in pulse_members:
         name = member.get("username", "Unknown")
-        # Check for known hour overrides, otherwise use default
-        if name in KNOWN_HOUR_OVERRIDES:
+        if name in saved_config:
+            # Use saved hours
+            capacity[name] = saved_config[name]
+        elif name in KNOWN_HOUR_OVERRIDES:
+            # New member with known override
             capacity[name] = KNOWN_HOUR_OVERRIDES[name]
         else:
+            # New member with default hours
             capacity[name] = DEFAULT_MEMBER_HOURS
 
     return capacity
@@ -971,12 +1016,30 @@ def api_team_capacity():
     })
 
 
-@app.route("/api/default-team-capacity")
+@app.route("/api/team-capacity")
 @login_required
-def api_default_team_capacity():
-    """Get default team capacity from ClickUp Pulse team members."""
-    capacity = build_team_capacity_from_clickup()
+def api_team_capacity():
+    """Get team capacity (merged from ClickUp + saved config)."""
+    capacity = build_team_capacity()
     return jsonify(capacity)
+
+
+@app.route("/api/team-capacity", methods=["POST"])
+@login_required
+def api_save_team_capacity():
+    """Save team capacity configuration (shared across all users)."""
+    try:
+        capacity = request.get_json()
+        if not capacity or not isinstance(capacity, dict):
+            return jsonify({"error": "Invalid capacity data"}), 400
+
+        success = save_capacity_config(capacity)
+        if success:
+            return jsonify({"status": "success", "message": "Capacity saved"})
+        return jsonify({"error": "Failed to save capacity"}), 500
+    except Exception as e:
+        logger.error(f"Error saving capacity: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/pulse-team")
