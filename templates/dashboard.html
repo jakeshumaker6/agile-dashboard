@@ -939,27 +939,49 @@
         }
 
         async function loadTeamCapacity() {
-            // Try to load from localStorage first
-            const saved = localStorage.getItem('pulseTeamCapacity');
-            if (saved) {
-                try {
-                    teamCapacity = JSON.parse(saved);
-                    updateCapacitySummary();
-                    populateCapacityGrid();
-                    return;
-                } catch (e) {
-                    console.error('Error parsing saved capacity:', e);
-                }
-            }
-
-            // Fallback to server defaults
+            // Always fetch current Pulse team from ClickUp to catch new members
             try {
                 const response = await fetch('/api/default-team-capacity');
-                teamCapacity = await response.json();
+                const currentTeam = await response.json();
+
+                // Load saved settings from localStorage
+                const saved = localStorage.getItem('pulseTeamCapacity');
+                let savedCapacity = {};
+                if (saved) {
+                    try {
+                        savedCapacity = JSON.parse(saved);
+                    } catch (e) {
+                        console.error('Error parsing saved capacity:', e);
+                    }
+                }
+
+                // Merge: use saved hours for existing members, defaults for new members
+                // Only include members currently in ClickUp (removes departed members)
+                teamCapacity = {};
+                for (const name in currentTeam) {
+                    if (savedCapacity.hasOwnProperty(name)) {
+                        // Use saved hours for this member
+                        teamCapacity[name] = savedCapacity[name];
+                    } else {
+                        // New member - use default from server
+                        teamCapacity[name] = currentTeam[name];
+                    }
+                }
+
+                // Save merged capacity back to localStorage
+                localStorage.setItem('pulseTeamCapacity', JSON.stringify(teamCapacity));
+
                 updateCapacitySummary();
                 populateCapacityGrid();
             } catch (error) {
                 console.error('Error loading team capacity:', error);
+                // Fallback to localStorage only if API fails
+                const saved = localStorage.getItem('pulseTeamCapacity');
+                if (saved) {
+                    teamCapacity = JSON.parse(saved);
+                    updateCapacitySummary();
+                    populateCapacityGrid();
+                }
             }
         }
 

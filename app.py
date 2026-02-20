@@ -78,18 +78,51 @@ EXPECTED_HOURS = {
 # Excluded folders
 EXCLUDED_FOLDERS = ["Client Template"]
 
-# Default team capacity (hours per week per team member)
-# Names pulled from ClickUp workspace, hours can be overridden via UI
-DEFAULT_TEAM_CAPACITY = {
+# Default hours for new team members
+DEFAULT_MEMBER_HOURS = 40
+
+# Known hour overrides for specific team members (non-40 hour weeks)
+# These are applied when a member first appears; user can customize in UI
+KNOWN_HOUR_OVERRIDES = {
     "Luke Shumaker": 20,
-    "Sam Gohel": 40,
-    "Jake Shumaker": 40,
-    "Sean Miller": 40,
-    "Bartosz Stoppel": 40,
     "Razvan Crisan": 10,
     "Adri Andika": 30,
-    "Fazail Sabri": 40,
 }
+
+
+def get_pulse_team_members():
+    """
+    Get team members filtered to only @pulsemarketing.co emails.
+    Returns list of team members from ClickUp who are internal Pulse employees.
+    """
+    all_members = get_team_members()
+    pulse_members = []
+
+    for member in all_members:
+        email = member.get("email", "").lower()
+        if email.endswith("@pulsemarketing.co"):
+            pulse_members.append(member)
+
+    return pulse_members
+
+
+def build_team_capacity_from_clickup():
+    """
+    Build team capacity dict from current ClickUp Pulse team members.
+    New members get default hours, known overrides are applied.
+    """
+    pulse_members = get_pulse_team_members()
+    capacity = {}
+
+    for member in pulse_members:
+        name = member.get("username", "Unknown")
+        # Check for known hour overrides, otherwise use default
+        if name in KNOWN_HOUR_OVERRIDES:
+            capacity[name] = KNOWN_HOUR_OVERRIDES[name]
+        else:
+            capacity[name] = DEFAULT_MEMBER_HOURS
+
+    return capacity
 
 def calculate_expected_points_from_hours(total_hours: float) -> float:
     """
@@ -941,8 +974,17 @@ def api_team_capacity():
 @app.route("/api/default-team-capacity")
 @login_required
 def api_default_team_capacity():
-    """Get default team capacity configuration."""
-    return jsonify(DEFAULT_TEAM_CAPACITY)
+    """Get default team capacity from ClickUp Pulse team members."""
+    capacity = build_team_capacity_from_clickup()
+    return jsonify(capacity)
+
+
+@app.route("/api/pulse-team")
+@login_required
+def api_pulse_team():
+    """Get current Pulse team members from ClickUp (filtered by @pulsemarketing.co)."""
+    members = get_pulse_team_members()
+    return jsonify(members)
 
 
 @app.route("/api/cache-status")
