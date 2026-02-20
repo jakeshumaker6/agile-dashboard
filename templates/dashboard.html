@@ -759,8 +759,9 @@
                 </div>
             </div>
             <div class="panel">
-                <div class="panel-title">
-                    <span>📅</span> Daily Breakdown
+                <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><span>📅</span> Daily Breakdown</span>
+                    <span id="dailyAvgLabel" style="font-size: 12px; color: var(--text-muted); font-weight: 400;">Avg: - pts/day</span>
                 </div>
                 <div class="chart-container">
                     <canvas id="dailyChart"></canvas>
@@ -1461,21 +1462,16 @@
                     order: 1,
                 });
 
-                // Calculate overall daily average (total average across all days)
+                // Calculate overall daily average and display in header label
                 const allDayAvgs = days.map(d => dailyAverages[d] || 0);
                 const overallDailyAvg = allDayAvgs.reduce((a, b) => a + b, 0) / allDayAvgs.filter(v => v > 0).length || 0;
+
+                // Update the label in the panel header
+                const dailyAvgLabel = document.getElementById('dailyAvgLabel');
                 if (overallDailyAvg > 0) {
-                    datasets.push({
-                        type: 'line',
-                        label: `Daily Avg (${overallDailyAvg.toFixed(1)} pts)`,
-                        data: Array(7).fill(overallDailyAvg),
-                        borderColor: '#8B95A5',
-                        borderDash: [5, 5],
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: false,
-                        order: 0,
-                    });
+                    dailyAvgLabel.textContent = `Avg: ${overallDailyAvg.toFixed(1)} pts/day`;
+                } else {
+                    dailyAvgLabel.textContent = 'Avg: - pts/day';
                 }
             }
 
