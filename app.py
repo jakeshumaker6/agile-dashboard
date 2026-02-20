@@ -82,6 +82,9 @@ EXPECTED_HOURS = {
 # Excluded folders
 EXCLUDED_FOLDERS = ["Client Template"]
 
+# Excluded assignees (non-Pulse employees who may appear on tasks)
+EXCLUDED_ASSIGNEES = ["Fazail Sabri"]
+
 # Default hours for new team members
 DEFAULT_MEMBER_HOURS = 40
 
@@ -561,11 +564,12 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
         if not t["is_complete"] and t["status"].lower() == "backlog"
     ]
 
-    # Tasks currently in progress (not complete, not backlog)
-    in_progress_statuses = ["in progress", "in review", "doing", "active", "working"]
+    # Tasks currently in progress (not complete, not backlog/to do)
+    # Include: in progress, in review, waiting response, doing, active, working
+    active_statuses = ["in progress", "in review", "waiting response", "doing", "active", "working"]
     tasks_in_progress = [
         t for t in all_tasks
-        if not t["is_complete"] and t["status"].lower() in in_progress_statuses
+        if not t["is_complete"] and t["status"].lower() in active_statuses
     ]
 
     # Calculate points
@@ -644,10 +648,13 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
             daily_breakdown[day_name]["points"] += task["score"] or 0
             daily_breakdown[day_name]["tasks"] += 1
 
-    # Assignee breakdown (points by person)
+    # Assignee breakdown (points by person, excluding non-Pulse employees)
     assignee_breakdown = defaultdict(lambda: {"points": 0, "tasks": 0, "username": ""})
     for task in completed_this_week:
         for assignee in task["assignees"]:
+            # Skip excluded assignees
+            if assignee["username"] in EXCLUDED_ASSIGNEES:
+                continue
             aid = assignee["id"]
             assignee_breakdown[aid]["username"] = assignee["username"]
             assignee_breakdown[aid]["points"] += task["score"] or 0
@@ -677,6 +684,28 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
     # Sort by overage (worst first)
     underestimated_tasks.sort(key=lambda x: x["overage"], reverse=True)
 
+    # Format task details for the modal popups
+    def format_task_for_modal(task, include_assignees=False):
+        hours = round(task.get("time_spent_ms", 0) / (1000 * 60 * 60), 1)
+        result = {
+            "id": task["id"],
+            "name": task["name"],
+            "score": task["score"],
+            "status": task["status"],
+            "hours": hours,
+            "url": task["url"],
+        }
+        if include_assignees:
+            # Filter out excluded assignees from the list
+            result["assignees"] = [
+                a["username"] for a in task["assignees"]
+                if a["username"] not in EXCLUDED_ASSIGNEES
+            ]
+        return result
+
+    completed_tasks_detail = [format_task_for_modal(t, include_assignees=True) for t in completed_this_week]
+    in_progress_tasks_detail = [format_task_for_modal(t, include_assignees=True) for t in tasks_in_progress]
+
     return {
         "week": {
             "start": monday.strftime("%Y-%m-%d"),
@@ -697,6 +726,11 @@ def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
         "assignee_breakdown": assignee_list,
         "underestimated_tasks": underestimated_tasks[:10],  # Top 10 worst
         "expected_hours_reference": EXPECTED_HOURS,
+        # Task details for modal popups
+        "tasks": {
+            "completed": completed_tasks_detail,
+            "in_progress": in_progress_tasks_detail,
+        },
     }
 
 

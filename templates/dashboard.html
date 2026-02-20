@@ -655,6 +655,227 @@
         footer a:hover {
             text-decoration: underline;
         }
+
+        /* Modal styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            transform: scale(0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .modal-overlay.visible .modal {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px 8px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+        }
+
+        .modal-body {
+            padding: 0;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-section {
+            padding: 16px 24px;
+        }
+
+        .modal-section:not(:last-child) {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-section-title {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .task-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-dark);
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+
+        .task-item:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .task-score {
+            min-width: 36px;
+            height: 36px;
+            background: var(--pulse-primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            color: white;
+        }
+
+        .task-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .task-name {
+            font-size: 14px;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .task-name a {
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .task-name a:hover {
+            color: var(--pulse-primary);
+        }
+
+        .task-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .task-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .task-status.completed {
+            background: rgba(74, 222, 128, 0.15);
+            color: var(--success);
+        }
+
+        .task-status.in-progress {
+            background: rgba(251, 191, 36, 0.15);
+            color: var(--warning);
+        }
+
+        .task-status.in-review {
+            background: rgba(96, 165, 250, 0.15);
+            color: #60A5FA;
+        }
+
+        .task-status.waiting {
+            background: rgba(167, 139, 250, 0.15);
+            color: #A78BFA;
+        }
+
+        .task-hours {
+            font-size: 13px;
+            color: var(--text);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        /* Clickable rows */
+        .clickable-row {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .clickable-row:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .reference-item.clickable {
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -664,6 +885,32 @@
         <div class="loading-text">Loading dashboard...</div>
         <div class="loading-bar">
             <div class="loading-bar-fill"></div>
+        </div>
+    </div>
+
+    <!-- Task Details Modal -->
+    <div class="modal-overlay" id="taskModal" onclick="closeModalOnOverlay(event)">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span id="modalIcon">👤</span>
+                    <span>
+                        <span id="modalTitle">Tasks</span>
+                        <div class="modal-subtitle" id="modalSubtitle"></div>
+                    </span>
+                </div>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section" id="completedSection">
+                    <div class="modal-section-title">Completed This Week</div>
+                    <div class="task-list" id="completedTasks"></div>
+                </div>
+                <div class="modal-section" id="inProgressSection">
+                    <div class="modal-section-title">In Progress / In Review / Waiting</div>
+                    <div class="task-list" id="inProgressTasks"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -836,32 +1083,32 @@
                     <span>📋</span> Expected Hours Reference
                 </div>
                 <div class="reference-grid">
-                    <div class="reference-item">
+                    <div class="reference-item clickable" onclick="showTasksByScore(1)">
                         <div class="reference-score">1</div>
                         <div class="reference-hours">30min - 1hr</div>
                         <div class="reference-label">Quick task</div>
                     </div>
-                    <div class="reference-item">
+                    <div class="reference-item clickable" onclick="showTasksByScore(2)">
                         <div class="reference-score">2</div>
                         <div class="reference-hours">1 - 2 hrs</div>
                         <div class="reference-label">Simple task</div>
                     </div>
-                    <div class="reference-item">
+                    <div class="reference-item clickable" onclick="showTasksByScore(3)">
                         <div class="reference-score">3</div>
                         <div class="reference-hours">2 - 4 hrs</div>
                         <div class="reference-label">Half day</div>
                     </div>
-                    <div class="reference-item">
+                    <div class="reference-item clickable" onclick="showTasksByScore(5)">
                         <div class="reference-score">5</div>
                         <div class="reference-hours">4 - 8 hrs</div>
                         <div class="reference-label">Full day</div>
                     </div>
-                    <div class="reference-item">
+                    <div class="reference-item clickable" onclick="showTasksByScore(8)">
                         <div class="reference-score">8</div>
                         <div class="reference-hours">1 - 2 days</div>
                         <div class="reference-label">Complex</div>
                     </div>
-                    <div class="reference-item">
+                    <div class="reference-item clickable" onclick="showTasksByScore(13)">
                         <div class="reference-score">13</div>
                         <div class="reference-hours">2 - 4 days</div>
                         <div class="reference-label">Epic</div>
@@ -1252,6 +1499,11 @@
                 currentPointsCompleted = metrics.summary.points_completed;
                 updateEfficiencyCard(currentPointsCompleted);
 
+                // Store task data for modal popups
+                if (metrics.tasks) {
+                    currentTasksData = metrics.tasks;
+                }
+
                 // Update efficiency table
                 updateEfficiencyTable(metrics.score_metrics);
 
@@ -1544,7 +1796,7 @@
             let html = '';
             assignees.forEach(a => {
                 html += `
-                    <tr>
+                    <tr class="clickable-row" onclick="showTasksByAssignee('${a.id}', '${a.username}')">
                         <td>${a.username}</td>
                         <td><strong>${a.points}</strong></td>
                         <td>${a.tasks}</td>
@@ -1593,6 +1845,118 @@
             } catch (error) {
                 insightsDiv.textContent = 'Could not load insights.';
             }
+        }
+
+        // ============================================================
+        // Task Details Modal
+        // ============================================================
+        let currentTasksData = { completed: [], in_progress: [] };
+
+        function openModal() {
+            document.getElementById('taskModal').classList.add('visible');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            document.getElementById('taskModal').classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+
+        function closeModalOnOverlay(event) {
+            if (event.target.id === 'taskModal') {
+                closeModal();
+            }
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        function getStatusClass(status) {
+            const s = status.toLowerCase();
+            if (s === 'complete' || s === 'closed' || s === 'done') return 'completed';
+            if (s === 'in review') return 'in-review';
+            if (s === 'waiting response' || s === 'waiting' || s === 'blocked') return 'waiting';
+            return 'in-progress';
+        }
+
+        function formatStatusLabel(status) {
+            const s = status.toLowerCase();
+            if (s === 'complete' || s === 'closed' || s === 'done') return 'Completed';
+            if (s === 'in review') return 'In Review';
+            if (s === 'waiting response') return 'Waiting';
+            if (s === 'in progress' || s === 'doing' || s === 'active' || s === 'working') return 'In Progress';
+            return status;
+        }
+
+        function renderTaskList(tasks, showAssignees = false) {
+            if (!tasks || tasks.length === 0) {
+                return '<div class="empty-state">No tasks</div>';
+            }
+
+            return tasks.map(task => {
+                const assigneeText = showAssignees && task.assignees ? task.assignees.join(', ') : '';
+                return `
+                    <div class="task-item">
+                        <div class="task-score">${task.score || '-'}</div>
+                        <div class="task-info">
+                            <div class="task-name">
+                                <a href="${task.url}" target="_blank">${task.name}</a>
+                            </div>
+                            <div class="task-meta">
+                                ${showAssignees && assigneeText ? `<span>${assigneeText}</span>` : ''}
+                                <span>${task.hours}h tracked</span>
+                            </div>
+                        </div>
+                        <span class="task-status ${getStatusClass(task.status)}">${formatStatusLabel(task.status)}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showTasksByAssignee(assigneeId, assigneeName) {
+            // Filter tasks by assignee
+            const completedTasks = currentTasksData.completed.filter(t =>
+                t.assignees && t.assignees.includes(assigneeName)
+            );
+            const inProgressTasks = currentTasksData.in_progress.filter(t =>
+                t.assignees && t.assignees.includes(assigneeName)
+            );
+
+            // Update modal
+            document.getElementById('modalIcon').textContent = '👤';
+            document.getElementById('modalTitle').textContent = assigneeName;
+            document.getElementById('modalSubtitle').textContent = `${completedTasks.length} completed, ${inProgressTasks.length} in progress`;
+
+            document.getElementById('completedTasks').innerHTML = renderTaskList(completedTasks, false);
+            document.getElementById('inProgressTasks').innerHTML = renderTaskList(inProgressTasks, false);
+
+            // Show/hide sections based on content
+            document.getElementById('completedSection').style.display = completedTasks.length ? 'block' : 'none';
+            document.getElementById('inProgressSection').style.display = inProgressTasks.length ? 'block' : 'none';
+
+            openModal();
+        }
+
+        function showTasksByScore(score) {
+            // Filter tasks by score
+            const completedTasks = currentTasksData.completed.filter(t => t.score === score);
+            const inProgressTasks = currentTasksData.in_progress.filter(t => t.score === score);
+
+            // Update modal
+            document.getElementById('modalIcon').textContent = '📊';
+            document.getElementById('modalTitle').textContent = `${score} Point Tasks`;
+            document.getElementById('modalSubtitle').textContent = `${completedTasks.length} completed, ${inProgressTasks.length} in progress`;
+
+            document.getElementById('completedTasks').innerHTML = renderTaskList(completedTasks, true);
+            document.getElementById('inProgressTasks').innerHTML = renderTaskList(inProgressTasks, true);
+
+            // Show/hide sections based on content
+            document.getElementById('completedSection').style.display = completedTasks.length ? 'block' : 'none';
+            document.getElementById('inProgressSection').style.display = inProgressTasks.length ? 'block' : 'none';
+
+            openModal();
         }
     </script>
 </body>
