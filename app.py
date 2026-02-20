@@ -1027,32 +1027,6 @@ def api_insights():
 @app.route("/api/team-capacity")
 @login_required
 def api_team_capacity():
-    """Calculate expected points based on team hours."""
-    # Get team hours from query params (JSON format) or use defaults
-    team_hours_param = request.args.get("team_hours")
-
-    if team_hours_param:
-        try:
-            team_hours = json.loads(team_hours_param)
-        except:
-            team_hours = DEFAULT_TEAM_CAPACITY
-    else:
-        team_hours = DEFAULT_TEAM_CAPACITY
-
-    total_hours = sum(team_hours.values())
-    expected_points = calculate_expected_points_from_hours(total_hours)
-
-    return jsonify({
-        "team_hours": team_hours,
-        "total_hours": total_hours,
-        "expected_points": expected_points,
-        "hours_per_point": 1.5,  # Based on typical 5-8 point task distribution
-    })
-
-
-@app.route("/api/team-capacity")
-@login_required
-def api_team_capacity():
     """Get team capacity (merged from ClickUp + saved config)."""
     capacity = build_team_capacity()
     return jsonify(capacity)
