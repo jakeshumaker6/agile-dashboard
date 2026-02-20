@@ -433,8 +433,28 @@ def get_all_tasks():
     return tasks
 
 
+def has_subtasks(task: dict) -> bool:
+    """Check if a task has subtasks (is a parent task)."""
+    subtasks = task.get("subtasks")
+    # subtasks can be a list of subtask objects or just a count
+    if isinstance(subtasks, list) and len(subtasks) > 0:
+        return True
+    if isinstance(subtasks, int) and subtasks > 0:
+        return True
+    return False
+
+
 def parse_task(task: dict, folder_name: str, list_name: str) -> dict:
-    """Parse a task and extract relevant fields."""
+    """Parse a task and extract relevant fields.
+
+    Returns None for parent tasks with subtasks (to avoid double-counting).
+    Only standalone tasks and subtasks are included in metrics.
+    """
+    # Skip parent tasks that have subtasks (to avoid double-counting)
+    # The subtasks themselves will be counted individually
+    if has_subtasks(task):
+        return None
+
     # Orderindex to Fibonacci score mapping (ClickUp returns orderindex as value)
     ORDERINDEX_TO_SCORE = {0: 1, 1: 2, 2: 3, 3: 5, 4: 8, 5: 13}
 
