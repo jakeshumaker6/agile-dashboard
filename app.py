@@ -997,14 +997,9 @@ def api_daily_averages():
 @app.route("/api/team")
 @login_required
 def api_team():
-    """Get team members."""
-    # Try daily cache first
-    cache = load_daily_cache()
-    if cache and cache.get('team_members'):
-        logger.info("Returning cached team members")
-        return jsonify(cache['team_members'])
-
-    members = get_team_members()
+    """Get team members (filtered to Pulse employees only)."""
+    # Return only Pulse employees (@pulsemarketing.co) for the dropdown filter
+    members = get_pulse_team_members()
     return jsonify(members)
 
 

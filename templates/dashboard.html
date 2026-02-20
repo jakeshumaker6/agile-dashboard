@@ -67,6 +67,7 @@
         .logo-img {
             height: 48px;
             width: auto;
+            border-radius: 8px;
         }
 
         /* Loading overlay */
@@ -1833,6 +1834,33 @@
             container.innerHTML = html;
         }
 
+        function formatInsightsMarkdown(text) {
+            // Convert markdown to HTML
+            let html = text
+                // Escape HTML first
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                // Headers (## Header)
+                .replace(/^### (.+)$/gm, '<h4 style="margin: 16px 0 8px; color: var(--pulse-primary);">$1</h4>')
+                .replace(/^## (.+)$/gm, '<h3 style="margin: 16px 0 8px; color: var(--pulse-primary);">$1</h3>')
+                .replace(/^# (.+)$/gm, '<h3 style="margin: 16px 0 8px; color: var(--pulse-primary);">$1</h3>')
+                // Bold (**text** or __text__)
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/__(.+?)__/g, '<strong>$1</strong>')
+                // Italic (*text* or _text_)
+                .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+                .replace(/_([^_]+)_/g, '<em>$1</em>')
+                // Numbered lists (1. item)
+                .replace(/^\d+\.\s+(.+)$/gm, '<li style="margin-left: 20px; margin-bottom: 8px;">$1</li>')
+                // Bullet lists (- item or * item)
+                .replace(/^[-*]\s+(.+)$/gm, '<li style="margin-left: 20px; margin-bottom: 8px;">$1</li>')
+                // Line breaks
+                .replace(/\n\n/g, '<br><br>')
+                .replace(/\n/g, '<br>');
+            return html;
+        }
+
         async function loadInsights(assigneeId) {
             const insightsDiv = document.getElementById('insights');
             insightsDiv.innerHTML = '<div class="loading"><span class="spinner"></span> Generating insights...</div>';
@@ -1841,9 +1869,9 @@
                 const url = `/api/insights?week_offset=${currentWeekOffset}${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
                 const response = await fetch(url);
                 const data = await response.json();
-                insightsDiv.textContent = data.insights;
+                insightsDiv.innerHTML = formatInsightsMarkdown(data.insights);
             } catch (error) {
-                insightsDiv.textContent = 'Could not load insights.';
+                insightsDiv.innerHTML = '<span style="color: var(--text-muted);">Could not load insights.</span>';
             }
         }
 
