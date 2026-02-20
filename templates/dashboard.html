@@ -385,57 +385,105 @@
 
         .reference-grid {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 12px;
-            text-align: center;
         }
 
-        @media (max-width: 600px) {
+        @media (max-width: 800px) {
             .reference-grid {
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 500px) {
+            .reference-grid {
+                grid-template-columns: 1fr;
             }
         }
 
         .reference-item {
-            padding: 20px 12px;
+            padding: 16px;
             background: rgba(255, 255, 255, 0.05);
             border-radius: 12px;
             border: 1px solid rgba(232, 90, 113, 0.2);
             transition: all 0.2s;
+            text-align: left;
         }
 
         .reference-item:hover {
             border-color: var(--pulse-primary);
             background: rgba(232, 90, 113, 0.1);
-            transform: translateY(-2px);
+        }
+
+        .reference-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
         }
 
         .reference-score {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 700;
             color: var(--pulse-primary);
-            margin-bottom: 6px;
+            background: rgba(232, 90, 113, 0.15);
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reference-title {
+            flex: 1;
+        }
+
+        .reference-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 2px;
         }
 
         .reference-hours {
             font-size: 12px;
-            color: var(--text);
+            color: var(--pulse-primary);
             font-weight: 500;
         }
 
-        .reference-label {
+        .reference-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .reference-examples {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 10px;
+        }
+
+        .reference-examples-title {
             font-size: 10px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-top: 4px;
+            margin-bottom: 6px;
         }
 
         .reference-example {
             font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 8px;
-            font-style: italic;
+            color: var(--text);
+            padding: 4px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+        }
+
+        .reference-example::before {
+            content: "•";
+            color: var(--pulse-accent);
         }
 
         /* Team capacity panel */
@@ -1081,38 +1129,104 @@
         <div class="grid-2">
             <div class="panel reference-panel">
                 <div class="panel-title">
-                    <span>📋</span> Expected Hours Reference
+                    <span>📋</span> Fibonacci Scoring Guide
                 </div>
                 <div class="reference-grid">
                     <div class="reference-item clickable" onclick="showTasksByScore(1)">
-                        <div class="reference-score">1</div>
-                        <div class="reference-hours">30min - 1hr</div>
-                        <div class="reference-label">Quick task</div>
+                        <div class="reference-header">
+                            <div class="reference-score">1</div>
+                            <div class="reference-title">
+                                <div class="reference-label">Quick Fix</div>
+                                <div class="reference-hours">30 min - 1 hour</div>
+                            </div>
+                        </div>
+                        <div class="reference-desc">Straightforward tasks with clear requirements. Minimal research or decision-making needed.</div>
+                        <div class="reference-examples">
+                            <div class="reference-examples-title">Examples</div>
+                            <div class="reference-example">Update copy or fix typos</div>
+                            <div class="reference-example">Swap out an image asset</div>
+                            <div class="reference-example">Minor CSS adjustments</div>
+                        </div>
                     </div>
                     <div class="reference-item clickable" onclick="showTasksByScore(2)">
-                        <div class="reference-score">2</div>
-                        <div class="reference-hours">1 - 2 hrs</div>
-                        <div class="reference-label">Simple task</div>
+                        <div class="reference-header">
+                            <div class="reference-score">2</div>
+                            <div class="reference-title">
+                                <div class="reference-label">Simple Task</div>
+                                <div class="reference-hours">1 - 2 hours</div>
+                            </div>
+                        </div>
+                        <div class="reference-desc">Well-defined tasks requiring some work but no major unknowns or blockers expected.</div>
+                        <div class="reference-examples">
+                            <div class="reference-examples-title">Examples</div>
+                            <div class="reference-example">Create a simple email template</div>
+                            <div class="reference-example">Set up basic tracking pixels</div>
+                            <div class="reference-example">Build a single landing page section</div>
+                        </div>
                     </div>
                     <div class="reference-item clickable" onclick="showTasksByScore(3)">
-                        <div class="reference-score">3</div>
-                        <div class="reference-hours">2 - 4 hrs</div>
-                        <div class="reference-label">Half day</div>
+                        <div class="reference-header">
+                            <div class="reference-score">3</div>
+                            <div class="reference-title">
+                                <div class="reference-label">Half Day</div>
+                                <div class="reference-hours">2 - 4 hours</div>
+                            </div>
+                        </div>
+                        <div class="reference-desc">Moderate complexity requiring focus time. May involve some research or coordination.</div>
+                        <div class="reference-examples">
+                            <div class="reference-examples-title">Examples</div>
+                            <div class="reference-example">Design social media graphics set</div>
+                            <div class="reference-example">Write blog post with research</div>
+                            <div class="reference-example">Configure email automation flow</div>
+                        </div>
                     </div>
                     <div class="reference-item clickable" onclick="showTasksByScore(5)">
-                        <div class="reference-score">5</div>
-                        <div class="reference-hours">4 - 8 hrs</div>
-                        <div class="reference-label">Full day</div>
+                        <div class="reference-header">
+                            <div class="reference-score">5</div>
+                            <div class="reference-title">
+                                <div class="reference-label">Full Day</div>
+                                <div class="reference-hours">4 - 8 hours</div>
+                            </div>
+                        </div>
+                        <div class="reference-desc">Substantial work requiring deep focus. Multiple components or stakeholder input needed.</div>
+                        <div class="reference-examples">
+                            <div class="reference-examples-title">Examples</div>
+                            <div class="reference-example">Build complete landing page</div>
+                            <div class="reference-example">Create monthly analytics report</div>
+                            <div class="reference-example">Develop campaign creative suite</div>
+                        </div>
                     </div>
                     <div class="reference-item clickable" onclick="showTasksByScore(8)">
-                        <div class="reference-score">8</div>
-                        <div class="reference-hours">1 - 2 days</div>
-                        <div class="reference-label">Complex</div>
+                        <div class="reference-header">
+                            <div class="reference-score">8</div>
+                            <div class="reference-title">
+                                <div class="reference-label">Complex</div>
+                                <div class="reference-hours">1 - 2 days</div>
+                            </div>
+                        </div>
+                        <div class="reference-desc">High complexity with multiple dependencies. Requires planning, iteration, or cross-team work.</div>
+                        <div class="reference-examples">
+                            <div class="reference-examples-title">Examples</div>
+                            <div class="reference-example">Full email nurture sequence</div>
+                            <div class="reference-example">Website section redesign</div>
+                            <div class="reference-example">Multi-channel campaign setup</div>
+                        </div>
                     </div>
                     <div class="reference-item clickable" onclick="showTasksByScore(13)">
-                        <div class="reference-score">13</div>
-                        <div class="reference-hours">2 - 4 days</div>
-                        <div class="reference-label">Epic</div>
+                        <div class="reference-header">
+                            <div class="reference-score">13</div>
+                            <div class="reference-title">
+                                <div class="reference-label">Epic</div>
+                                <div class="reference-hours">2 - 4 days</div>
+                            </div>
+                        </div>
+                        <div class="reference-desc">Major initiative spanning multiple days. Consider breaking into smaller tasks if possible.</div>
+                        <div class="reference-examples">
+                            <div class="reference-examples-title">Examples</div>
+                            <div class="reference-example">Full website build or overhaul</div>
+                            <div class="reference-example">Complete brand guidelines</div>
+                            <div class="reference-example">Launch full marketing campaign</div>
+                        </div>
                     </div>
                 </div>
             </div>
