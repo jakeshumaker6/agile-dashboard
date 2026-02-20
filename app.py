@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pulse-agile-dashboard-secret-key-change-in-prod")
+app.permanent_session_lifetime = timedelta(hours=24)  # Sessions last 24 hours
 
 # Simple in-memory cache (for short-term API response caching)
 _cache = {}
@@ -905,6 +906,7 @@ def login():
     if request.method == "POST":
         password = request.form.get("password", "")
         if password == DASHBOARD_PASSWORD:
+            session.permanent = True  # Use the 24-hour lifetime
             session["authenticated"] = True
             return redirect(url_for("dashboard"))
         else:
