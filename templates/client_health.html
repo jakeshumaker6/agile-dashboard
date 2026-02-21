@@ -596,7 +596,7 @@
                 <div class="modal-section-title">Recent Calls (${calls.length})</div>
                 ${calls.length ? calls.map(cl => `
                     <div class="call-item">
-                        <a href="${cl.url}" target="_blank">${cl.title}</a>
+                        ${cl.url ? `<a href="${cl.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px">${cl.title} <span style="font-size:11px;opacity:0.5">↗</span></a>` : `<span style="color:var(--text)">${cl.title}</span>`}
                         <div class="call-meta">${cl.date ? new Date(cl.date).toLocaleDateString() : 'N/A'}</div>
                     </div>
                 `).join('') : '<div class="empty-state">No recent calls found</div>'}

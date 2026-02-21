@@ -88,6 +88,13 @@ def grain_request(endpoint, params=None):
         return {}
 
 
+PULSE_TEAM_NAMES = [
+    "jake", "sean", "bartosz", "luke", "sam", "razvan", "adri", "walter",
+    "jake shumaker", "sean miller", "bartosz stoppel", "luke shumaker",
+    "samarth gohel", "walter miller",
+]
+
+
 def fetch_grain_recordings():
     """Fetch all recordings from Grain with pagination."""
     all_recordings = []
@@ -112,9 +119,8 @@ def fetch_grain_recordings():
 
     logger.info(f"Fetched {len(all_recordings)} Grain recordings")
 
-    # Enrich with transcript speakers for external call detection
-    # Only fetch transcripts for recent recordings (last 90 days) to limit API calls
-    from datetime import datetime, timezone, timedelta
+    # Enrich with detail endpoint + transcript speakers for external call detection
+    # Only fetch details for recent recordings (last 90 days) to limit API calls
     cutoff = datetime.now(timezone.utc) - timedelta(days=90)
     enriched = 0
     for rec in all_recordings:
@@ -128,10 +134,32 @@ def fetch_grain_recordings():
                 continue
 
         rec_id = rec.get("id", "")
-        if rec_id and enriched < 100:  # Limit to 100 transcript fetches per refresh
+        if rec_id and enriched < 100:  # Limit to 100 detail fetches per refresh
+            # Step 1: Fetch individual recording detail for attendee data
+            detail = grain_request(f"/recordings/{rec_id}")
+            if detail:
+                attendees = detail.get("attendees", [])
+                if attendees:
+                    rec["_attendees"] = attendees
+                    logger.debug(f"Grain rec {rec_id}: got {len(attendees)} attendees from detail endpoint")
+                    enriched += 1
+                    continue
+
+                # Step 2: Try transcript text URL for speaker names
+                transcript_url = detail.get("transcript_txt_url", "")
+                if transcript_url:
+                    speakers = _fetch_speakers_from_transcript_txt(transcript_url)
+                    if speakers:
+                        rec["_speakers"] = speakers
+                        logger.debug(f"Grain rec {rec_id}: got {len(speakers)} speakers from transcript_txt_url")
+                        enriched += 1
+                        continue
+
+            # Step 3: Fall back to transcript API endpoint
             speakers = fetch_transcript_speakers(rec_id)
             if speakers:
                 rec["_speakers"] = speakers
+                logger.debug(f"Grain rec {rec_id}: got {len(speakers)} speakers from transcript API")
                 enriched += 1
 
     # Filter to external calls only
@@ -142,6 +170,7 @@ def fetch_grain_recordings():
             external_recordings.append(rec)
         elif ext is None:
             # Unknown — include but mark as unverified
+            rec["_external_unverified"] = True
             external_recordings.append(rec)
         # ext is False = internal only, skip
 
@@ -149,33 +178,110 @@ def fetch_grain_recordings():
     return external_recordings
 
 
+def _fetch_speakers_from_transcript_txt(transcript_url):
+    """Download transcript text and extract unique speaker names."""
+    try:
+        req = urllib.request.Request(transcript_url, headers={"Accept": "text/plain"})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            text = response.read().decode("utf-8", errors="replace")[:50000]  # Cap at 50KB
+            speakers = set()
+            for line in text.split("\n"):
+                line = line.strip()
+                # Common transcript format: "Speaker Name: text" or "Speaker Name (HH:MM:SS)"
+                if ":" in line:
+                    potential_name = line.split(":", 1)[0].strip()
+                    # Heuristic: speaker names are short (1-4 words), no digits
+                    words = potential_name.split()
+                    if 1 <= len(words) <= 4 and not any(c.isdigit() for c in potential_name):
+                        speakers.add(potential_name)
+            return list(speakers) if speakers else []
+    except Exception as e:
+        logger.debug(f"Could not fetch transcript txt: {e}")
+        return []
+
+
 def is_external_call(recording):
     """Check if a recording has external (non-Pulse) attendees.
-    Uses transcript speakers — names with '/EXT' suffix or not matching Pulse team.
-    Also checks owners list for non-pulsemarketing.co emails.
-    Returns True if external attendees detected, False if internal-only, None if unknown.
+
+    Uses multiple approaches in order:
+    1. Check attendees from detail endpoint for non-pulsemarketing.co emails
+    2. Check owners for non-pulsemarketing.co emails
+    3. Check transcript speakers for non-Pulse names
+    4. Fallback heuristic: title/notes contain client name + multiple participants
+
+    Returns True if external, False if internal-only, None if unknown.
     """
-    # Check owners for non-Pulse emails
+    approach = None
+
+    # 1. Check attendees from detail endpoint
+    attendees = recording.get("_attendees", [])
+    if attendees:
+        for att in attendees:
+            email = ""
+            if isinstance(att, str):
+                email = att
+            elif isinstance(att, dict):
+                email = att.get("email", "") or att.get("emailAddress", "")
+            if email and not email.lower().endswith("@pulsemarketing.co"):
+                approach = "attendees_detail"
+                logger.debug(f"External call detected via {approach}: {recording.get('id','')}")
+                return True
+        # Had attendees but all Pulse — internal
+        return False
+
+    # 2. Check owners for non-Pulse emails
     owners = recording.get("owners", [])
     has_external_owner = any(
         o and not o.lower().endswith("@pulsemarketing.co")
         for o in owners if isinstance(o, str)
     )
     if has_external_owner:
+        approach = "owners_email"
+        logger.debug(f"External call detected via {approach}: {recording.get('id','')}")
         return True
 
-    # Check transcript speakers if available
+    # 3. Check transcript speakers for non-Pulse names
     speakers = recording.get("_speakers", [])
     if speakers:
         for s in speakers:
             name = s if isinstance(s, str) else s.get("name", "") if isinstance(s, dict) else ""
+            name_lower = name.lower().strip()
             # Grain marks external attendees with /EXT suffix
             if "/EXT" in name or "/ext" in name:
+                approach = "speaker_ext_tag"
+                logger.debug(f"External call detected via {approach}: {recording.get('id','')}")
                 return True
-        # If we have speakers but none are external, it's internal
+            # Check if speaker name matches any known Pulse team member
+            if name_lower and not any(pn in name_lower for pn in PULSE_TEAM_NAMES):
+                approach = "speaker_name_mismatch"
+                logger.debug(f"External call detected via {approach} (speaker: {name}): {recording.get('id','')}")
+                return True
+        # All speakers match Pulse team — internal
         return False
 
-    return None  # Unknown — no speaker data available
+    # 4. Fallback heuristic: title/notes contain what looks like a client meeting + multiple owners
+    title = (recording.get("title") or recording.get("name") or "").lower()
+    notes = (recording.get("intelligence_notes_md") or "").lower()
+    searchable = title + " " + notes
+    owner_count = len(owners) if owners else 0
+
+    # Load client names for heuristic matching
+    try:
+        from client_mappings import load_mappings
+        mappings = load_mappings()
+        all_client_keywords = []
+        for client_data in mappings.get("email_domains", {}).values():
+            all_client_keywords.extend(kw.lower() for kw in client_data.get("keywords", []))
+
+        has_client_mention = any(kw in searchable for kw in all_client_keywords if len(kw) > 2)
+        if has_client_mention and owner_count > 1:
+            approach = "title_heuristic"
+            logger.debug(f"External call detected via {approach}: {recording.get('id','')}")
+            return True
+    except Exception:
+        pass
+
+    return None  # Unknown — no signal available
 
 
 def fetch_transcript_speakers(recording_id):
@@ -351,6 +457,7 @@ def search_client_emails(gmail_service, client_name, max_results=3):
 
         # Exclude junk/automated emails
         junk_filters = [
+            # WordPress/plugin/security
             '-subject:"plugin update"',
             '-subject:"WordPress"',
             '-subject:"security alert"',
@@ -358,10 +465,42 @@ def search_client_emails(gmail_service, client_name, max_results=3):
             '-subject:"iThemes Security"',
             '-subject:"uptime monitoring"',
             '-subject:"backup completed"',
+            # Billing/invoice auto-notifications (payment processors, not client invoices)
+            '-subject:"payment receipt"',
+            '-subject:"payment processed"',
+            '-subject:"auto-pay"',
+            '-subject:"billing statement"',
+            # SSL/domain/hosting
+            '-subject:"SSL certificate"',
+            '-subject:"domain renewal"',
+            '-subject:"domain expir"',
+            '-subject:"server notification"',
+            '-subject:"hosting account"',
+            '-subject:"disk usage"',
+            '-subject:"cPanel"',
+            # Google automated reports
+            '-subject:"Analytics report"',
+            '-subject:"Search Console"',
+            '-subject:"Google Search performance"',
+            # Social media auto-notifications
+            '-subject:"new follower"',
+            '-subject:"posted an update"',
+            '-subject:"new comment on"',
+            '-from:notify@twitter.com',
+            '-from:notification@facebookmail.com',
+            '-from:no-reply@linkedin.com',
+            # CRM/tool notifications
+            '-from:@hubspot.com',
+            '-from:@mailchimp.com',
+            '-from:@mandrillapp.com',
+            '-from:@sendgrid.net',
+            # General automated senders
             '-from:noreply',
             '-from:no-reply',
             '-from:wordpress@',
             '-from:notification@',
+            '-from:mailer-daemon',
+            '-from:postmaster',
         ]
         query += " " + " ".join(junk_filters)
         results = gmail_service.users().messages().list(
@@ -503,9 +642,25 @@ def batch_claude_sentiment(clients_with_emails):
         return {c: {"rating": "neutral", "reason": "No API key"} for c in clients_with_emails}
 
     # Build batch prompt
-    batch_text = "Analyze the client relationship health for each client below based on their recent emails.\n"
-    batch_text += "For EACH client, rate: positive, neutral, concerned, or negative.\n"
-    batch_text += 'Respond with JSON only: {"results": {"ClientName": {"rating": "...", "reason": "one sentence"}, ...}}\n\n'
+    batch_text = """Analyze the client relationship health for each client below based on their recent emails.
+
+HEALTH SCORING RULES:
+- 🟢 positive: Regular communication happening, even if there are overdue tasks (communication = healthy relationship)
+- 🟢 positive: No overdue tasks, even without frequent communication
+- 🔴 negative: Overdue tasks AND no recent communication (both together = red flag)
+- 🔴 negative: Approaching project deadline and not close to completion
+- 🔴 negative: Client emailed us and we haven't responded in a long time
+- 🟡 concerned: Client has gone quiet (was active, now silent)
+- 🟡 concerned: Tone shifted from friendly to terse/curt
+- 🟡 concerned: Scope creep discussions or payment delay mentions
+- Weight recent emails MORE heavily than older ones
+- IGNORE automated emails: WordPress updates, plugin notifications, security alerts, backup notices, uptime monitors
+- These are NOT real client communication and should not count
+
+Rate each: positive, neutral, concerned, or negative.
+Respond with JSON only: {"results": {"ClientName": {"rating": "...", "reason": "one sentence"}, ...}}
+
+"""
 
     for client_name, emails in clients_with_emails.items():
         batch_text += f"=== {client_name} ===\n"
