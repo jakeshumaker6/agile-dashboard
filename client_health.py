@@ -108,13 +108,107 @@ def fetch_grain_recordings():
             break
 
     logger.info(f"Fetched {len(all_recordings)} Grain recordings")
-    return all_recordings
+
+    # Enrich with transcript speakers for external call detection
+    # Only fetch transcripts for recent recordings (last 90 days) to limit API calls
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    enriched = 0
+    for rec in all_recordings:
+        start_str = rec.get("start_datetime", "")
+        if start_str:
+            try:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                if start_dt < cutoff:
+                    continue
+            except Exception:
+                continue
+
+        rec_id = rec.get("id", "")
+        if rec_id and enriched < 100:  # Limit to 100 transcript fetches per refresh
+            speakers = fetch_transcript_speakers(rec_id)
+            if speakers:
+                rec["_speakers"] = speakers
+                enriched += 1
+
+    # Filter to external calls only
+    external_recordings = []
+    for rec in all_recordings:
+        ext = is_external_call(rec)
+        if ext is True:
+            external_recordings.append(rec)
+        elif ext is None:
+            # Unknown — include but mark as unverified
+            external_recordings.append(rec)
+        # ext is False = internal only, skip
+
+    logger.info(f"After external filter: {len(external_recordings)} external calls (from {len(all_recordings)} total)")
+    return external_recordings
+
+
+def is_external_call(recording):
+    """Check if a recording has external (non-Pulse) attendees.
+    Uses transcript speakers — names with '/EXT' suffix or not matching Pulse team.
+    Also checks owners list for non-pulsemarketing.co emails.
+    Returns True if external attendees detected, False if internal-only, None if unknown.
+    """
+    # Check owners for non-Pulse emails
+    owners = recording.get("owners", [])
+    has_external_owner = any(
+        o and not o.lower().endswith("@pulsemarketing.co")
+        for o in owners if isinstance(o, str)
+    )
+    if has_external_owner:
+        return True
+
+    # Check transcript speakers if available
+    speakers = recording.get("_speakers", [])
+    if speakers:
+        for s in speakers:
+            name = s if isinstance(s, str) else s.get("name", "") if isinstance(s, dict) else ""
+            # Grain marks external attendees with /EXT suffix
+            if "/EXT" in name or "/ext" in name:
+                return True
+        # If we have speakers but none are external, it's internal
+        return False
+
+    return None  # Unknown — no speaker data available
+
+
+def fetch_transcript_speakers(recording_id):
+    """Fetch speaker names from a Grain transcript. Returns list of speaker name strings."""
+    grain_key = load_grain_api_key()
+    if not grain_key:
+        return []
+
+    url = f"https://api.grain.com/_/public-api/recordings/{recording_id}/transcript"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {grain_key}",
+        "Accept": "application/json"
+    })
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+            speakers = set()
+            if isinstance(data, list):
+                for entry in data[:200]:  # First 200 entries is enough
+                    if isinstance(entry, dict) and entry.get("speaker"):
+                        speakers.add(entry["speaker"])
+            elif isinstance(data, dict) and "segments" in data:
+                for seg in data["segments"][:200]:
+                    if isinstance(seg, dict) and seg.get("speaker"):
+                        speakers.add(seg["speaker"])
+            return list(speakers)
+    except Exception as e:
+        logger.debug(f"Could not fetch transcript for {recording_id}: {e}")
+        return []
 
 
 def match_client_to_recording(recording, client_names):
     """Match a recording to a client.
-    First checks manual grain_matches in client_mappings.json,
-    then falls back to scanning title AND intelligence_notes_md.
+    Priority: 1) manual grain_matches, 2) client mapping keywords in title/notes,
+    3) client name in title/notes, 4) external speaker email domains.
     Returns client name or None.
     """
     from client_mappings import load_mappings
@@ -131,11 +225,22 @@ def match_client_to_recording(recording, client_names):
     notes = (recording.get("intelligence_notes_md") or "").lower()
     searchable = title + " " + notes
 
+    # Check client mapping keywords first (more specific)
+    if rec_id:
+        mappings = load_mappings()
+        email_domains = mappings.get("email_domains", {})
+        for client in client_names:
+            mapping = email_domains.get(client, {})
+            keywords = mapping.get("keywords", [])
+            for kw in keywords:
+                if kw.lower() in searchable:
+                    return client
+
+    # Fall back to client name matching
     for client in client_names:
         client_lower = client.lower()
         if client_lower in searchable:
             return client
-        # Also check abbreviations / short forms
         words = client_lower.split()
         if len(words) > 1 and all(w in searchable for w in words):
             return client
@@ -178,8 +283,39 @@ def search_client_emails(gmail_service, client_name, max_results=3):
 
     try:
         logger.info(f"Gmail: searching for '{client_name}'...")
-        # Search in subject and body for client name
-        query = f'"{client_name}"'
+
+        # Check client mappings for email domains/keywords
+        from client_mappings import load_mappings
+        mappings = load_mappings()
+        client_mapping = mappings.get("email_domains", {}).get(client_name, {})
+        domains = client_mapping.get("domains", [])
+        keywords = client_mapping.get("keywords", [])
+
+        # Build search query — use domains if available, otherwise fall back to name
+        if domains:
+            domain_query = " OR ".join(f"from:{d}" for d in domains)
+            query = f'({domain_query})'
+        elif keywords:
+            kw_query = " OR ".join(f'"{kw}"' for kw in keywords)
+            query = kw_query
+        else:
+            query = f'"{client_name}"'
+
+        # Exclude junk/automated emails
+        junk_filters = [
+            '-subject:"plugin update"',
+            '-subject:"WordPress"',
+            '-subject:"security alert"',
+            '-subject:"Wordfence"',
+            '-subject:"iThemes Security"',
+            '-subject:"uptime monitoring"',
+            '-subject:"backup completed"',
+            '-from:noreply',
+            '-from:no-reply',
+            '-from:wordpress@',
+            '-from:notification@',
+        ]
+        query += " " + " ".join(junk_filters)
         results = gmail_service.users().messages().list(
             userId="me", q=query, maxResults=max_results
         ).execute()
