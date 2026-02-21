@@ -114,17 +114,20 @@ def fetch_grain_recordings():
 
 
 def match_client_to_recording(recording, client_names):
-    """Match a recording title to a client name. Returns client name or None."""
+    """Match a recording to a client by scanning title AND intelligence_notes_md.
+    Returns client name or None.
+    """
     title = (recording.get("title") or recording.get("name") or "").lower()
+    notes = (recording.get("intelligence_notes_md") or "").lower()
+    searchable = title + " " + notes
 
     for client in client_names:
-        # Check various forms of the client name
         client_lower = client.lower()
-        if client_lower in title:
+        if client_lower in searchable:
             return client
         # Also check abbreviations / short forms
         words = client_lower.split()
-        if len(words) > 1 and all(w in title for w in words):
+        if len(words) > 1 and all(w in searchable for w in words):
             return client
 
     return None
@@ -197,32 +200,147 @@ def search_client_emails(gmail_service, client_name, max_results=5):
         return []
 
 
-def simple_sentiment(text):
-    """Very basic keyword-based sentiment analysis. Returns 'positive', 'neutral', or 'negative'."""
-    text_lower = text.lower()
+def claude_sentiment(client_name, emails):
+    """Use Claude API for sentiment analysis of client emails.
+    Returns dict: {"rating": "positive"|"neutral"|"concerned"|"negative", "reason": "..."}
+    Falls back to "neutral" on any error.
+    """
+    if not emails:
+        return {"rating": "neutral", "reason": "No recent emails to analyze"}
 
-    negative_words = [
-        "unhappy", "frustrated", "disappointed", "upset", "complaint", "issue",
-        "problem", "cancel", "termination", "concerned", "delay", "overdue",
-        "late", "missed", "wrong", "error", "fail", "poor", "bad", "worse",
-        "urgent", "asap", "immediately", "unacceptable", "behind schedule"
-    ]
-    positive_words = [
-        "thank", "great", "awesome", "excellent", "happy", "pleased", "love",
-        "perfect", "amazing", "wonderful", "impressive", "good job", "well done",
-        "appreciate", "fantastic", "excited", "thrilled"
-    ]
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return {"rating": "neutral", "reason": "No API key configured"}
 
-    neg_count = sum(1 for w in negative_words if w in text_lower)
-    pos_count = sum(1 for w in positive_words if w in text_lower)
+    # Build email summary for Claude
+    email_text = ""
+    for e in emails[:5]:
+        email_text += f"Subject: {e.get('subject', '')}\nSnippet: {e.get('snippet', '')}\n\n"
 
-    if neg_count > pos_count and neg_count >= 2:
-        return "negative"
-    elif neg_count > pos_count:
-        return "mildly_negative"
-    elif pos_count > neg_count:
-        return "positive"
-    return "neutral"
+    prompt = (
+        f"These are recent email communications about client {client_name}. "
+        f"Rate the client relationship health on this scale: positive, neutral, concerned, negative. "
+        f'Respond with JSON only: {{"rating": "...", "reason": "one sentence explanation"}}\n\n'
+        f"{email_text}"
+    )
+
+    request_body = {
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 100,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01"
+    }
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(request_body).encode(),
+        headers=headers,
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+            text = data["content"][0]["text"].strip()
+            # Parse JSON from response (handle markdown code blocks)
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            result = json.loads(text)
+            rating = result.get("rating", "neutral").lower()
+            if rating not in ("positive", "neutral", "concerned", "negative"):
+                rating = "neutral"
+            return {"rating": rating, "reason": result.get("reason", "")}
+    except Exception as e:
+        logger.error(f"Claude sentiment error for {client_name}: {e}")
+        return {"rating": "neutral", "reason": "Analysis unavailable"}
+
+
+# Sentiment cache (separate from main health cache)
+_sentiment_cache = {"data": {}, "expires": 0}
+
+
+def get_cached_sentiment(client_name, emails):
+    """Get sentiment with caching (30 min TTL)."""
+    now = time.time()
+    if now < _sentiment_cache["expires"] and client_name in _sentiment_cache["data"]:
+        return _sentiment_cache["data"][client_name]
+
+    result = claude_sentiment(client_name, emails)
+    _sentiment_cache["data"][client_name] = result
+    _sentiment_cache["expires"] = now + CLIENT_HEALTH_CACHE_TTL
+    return result
+
+
+# ============================================================================
+# Account Manager from ClickUp Admin Space
+# ============================================================================
+
+ACTIVE_ACCOUNTS_LIST_ID = "901320376565"
+
+# Fuzzy name mapping: ClickUp task name fragment → health dashboard client name
+_ACCOUNT_NAME_MAP = {
+    "dcc marketing": "DCC",
+    "dcc": "DCC",
+    "f.e.a.s.t.": "FEAST",
+    "feast": "FEAST",
+    "national association of anorexia": "ANAD",
+    "anad": "ANAD",
+    "bre law": "BRE Law",
+    "city of decatur": "City of Decatur",
+    "family home": "Family Home & Patio",
+    "gaapp": "GAAPP",
+    "give them wings": "Give Them Wings",
+    "hungerford": "Hungerford",
+    "main place": "Main Place",
+    "national concerts": "National Concerts",
+    "premier fund": "Premier Fund Solutions",
+    "s40s": "S40S",
+    "st. louis crossing": "St. Louis Crossing Church",
+    "strategic wealth": "Strategic Wealth Group",
+}
+
+
+def _match_account_name(clickup_name):
+    """Fuzzy match a ClickUp task name to an ACTIVE_CLIENTS name."""
+    name_lower = clickup_name.lower().strip()
+
+    # Direct match
+    for client in ACTIVE_CLIENTS:
+        if client.lower() == name_lower or client.lower() in name_lower or name_lower in client.lower():
+            return client
+
+    # Map-based match
+    for fragment, client in _ACCOUNT_NAME_MAP.items():
+        if fragment in name_lower:
+            return client
+
+    return None
+
+
+def fetch_account_managers(clickup_request_fn):
+    """Fetch account managers from ClickUp Active Accounts list.
+    Returns dict: {client_name: manager_name}
+    """
+    managers = {}
+    try:
+        tasks_data = clickup_request_fn(f"/list/{ACTIVE_ACCOUNTS_LIST_ID}/task?include_closed=false")
+        for task in tasks_data.get("tasks", []):
+            client = _match_account_name(task.get("name", ""))
+            if client:
+                assignees = task.get("assignees", [])
+                if assignees:
+                    managers[client] = assignees[0].get("username", "Unassigned")
+                else:
+                    managers[client] = "Unassigned"
+        logger.info(f"Fetched account managers for {len(managers)} clients")
+    except Exception as e:
+        logger.error(f"Error fetching account managers: {e}")
+    return managers
 
 
 # ============================================================================
@@ -360,6 +478,7 @@ def analyze_client_tasks(tasks):
 def calculate_health(task_metrics, days_since_email, days_since_call, email_sentiment):
     """
     Calculate health status based on scoring logic.
+    Uses combined "last touchpoint" (min of email/call) for communication signals.
     Returns: {"status": "green"|"yellow"|"red", "reasons": [...]}
     """
     yellow_signals = []
@@ -372,31 +491,25 @@ def calculate_health(task_metrics, days_since_email, days_since_call, email_sent
     elif 1 <= overdue <= 3:
         yellow_signals.append(f"{overdue} overdue task{'s' if overdue > 1 else ''}")
 
-    # Communication signals - email
-    if days_since_email is not None:
-        if days_since_email > 14:
-            red_signals.append(f"No email in {days_since_email} days")
-        elif days_since_email > 7:
-            yellow_signals.append(f"Last email {days_since_email} days ago")
-
-    # Communication signals - call
-    if days_since_call is not None:
-        if days_since_call > 14:
-            red_signals.append(f"No call in {days_since_call} days")
-        elif days_since_call > 7:
-            yellow_signals.append(f"Last call {days_since_call} days ago")
+    # Combined touchpoint signal (minimum of email and call days)
+    touchpoints = [d for d in [days_since_email, days_since_call] if d is not None]
+    if touchpoints:
+        days_since_touchpoint = min(touchpoints)
+        if days_since_touchpoint > 14:
+            red_signals.append(f"No touchpoint in {days_since_touchpoint} days")
+        elif days_since_touchpoint > 7:
+            yellow_signals.append(f"Last touchpoint {days_since_touchpoint} days ago")
 
     # Sentiment signals
-    if email_sentiment == "negative":
+    if email_sentiment in ("negative",):
         red_signals.append("Negative email sentiment")
-    elif email_sentiment == "mildly_negative":
-        yellow_signals.append("Mildly negative email tone")
+    elif email_sentiment in ("concerned", "mildly_negative"):
+        yellow_signals.append("Concerned email tone")
 
     # Determine status
     if red_signals:
         return {"status": "red", "reasons": red_signals + yellow_signals}
     elif len(yellow_signals) >= 2:
-        # 2+ yellow signals = red
         return {"status": "red", "reasons": yellow_signals, "escalated": True}
     elif yellow_signals:
         return {"status": "yellow", "reasons": yellow_signals}
@@ -461,20 +574,20 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
         client_recent_calls[client].sort(key=lambda x: x["date"], reverse=True)
         client_recent_calls[client] = client_recent_calls[client][:5]  # Keep top 5
 
-    # 3. Gmail
+    # 3. Gmail + Claude sentiment
     gmail_service = get_gmail_service()
     client_email_data = {}
     for client in ACTIVE_CLIENTS:
         emails = search_client_emails(gmail_service, client, max_results=5)
         if emails:
             latest = max(emails, key=lambda e: e.get("date_ts", 0))
-            # Aggregate sentiment from recent emails
-            all_text = " ".join(e.get("snippet", "") + " " + e.get("subject", "") for e in emails)
-            sentiment = simple_sentiment(all_text)
+            # Use Claude for sentiment analysis
+            sentiment_result = get_cached_sentiment(client, emails)
             client_email_data[client] = {
                 "last_date": latest.get("date"),
                 "last_date_ts": latest.get("date_ts"),
-                "sentiment": sentiment,
+                "sentiment": sentiment_result["rating"],
+                "sentiment_reason": sentiment_result["reason"],
                 "recent_emails": [{
                     "subject": e["subject"],
                     "from": e["from"],
@@ -487,8 +600,12 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
                 "last_date": None,
                 "last_date_ts": None,
                 "sentiment": "neutral",
+                "sentiment_reason": "No recent emails",
                 "recent_emails": [],
             }
+
+    # 3b. Account managers from ClickUp Admin space
+    account_managers = fetch_account_managers(clickup_request_fn)
 
     # 4. Build per-client health data
     now_dt = datetime.now(timezone.utc)
@@ -516,9 +633,14 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
             email_data.get("sentiment", "neutral")
         )
 
+        # Combined last touchpoint
+        touchpoints = [d for d in [days_since_email, days_since_call] if d is not None]
+        days_since_touchpoint = min(touchpoints) if touchpoints else None
+
         clients.append({
             "name": client_name,
             "health": health,
+            "account_manager": account_managers.get(client_name, ""),
             "tasks": {
                 "open": task_metrics["open_count"],
                 "overdue": task_metrics["overdue_count"],
@@ -532,7 +654,9 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
             "communication": {
                 "days_since_email": days_since_email,
                 "days_since_call": days_since_call,
+                "days_since_touchpoint": days_since_touchpoint,
                 "email_sentiment": email_data.get("sentiment", "neutral"),
+                "sentiment_reason": email_data.get("sentiment_reason", ""),
                 "last_email_date": email_data.get("last_date"),
                 "last_call_date": client_last_call.get(client_name, "").isoformat() if client_name in client_last_call else None,
                 "recent_emails": email_data.get("recent_emails", [])[:5],

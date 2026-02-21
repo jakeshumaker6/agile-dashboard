@@ -229,8 +229,11 @@
         }
         .sentiment-badge.positive { background: rgba(74,222,128,0.15); color: var(--success); }
         .sentiment-badge.neutral { background: rgba(255,255,255,0.05); color: var(--text-muted); }
+        .sentiment-badge.concerned { background: rgba(251,191,36,0.15); color: var(--warning); }
         .sentiment-badge.mildly_negative { background: rgba(251,191,36,0.15); color: var(--warning); }
         .sentiment-badge.negative { background: rgba(248,113,113,0.15); color: var(--danger); }
+
+        .account-manager { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
         .empty-state { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; }
 
@@ -362,9 +365,8 @@
 
         function populateManagerFilter() {
             const managers = new Set();
-            allClients.forEach(c => (c.tasks.assignees || []).forEach(a => managers.add(a)));
+            allClients.forEach(c => { if (c.account_manager) managers.add(c.account_manager); });
             const select = document.getElementById('managerFilter');
-            // Keep first option, clear rest
             while (select.options.length > 1) select.remove(1);
             [...managers].sort().forEach(m => {
                 const opt = document.createElement('option');
@@ -380,7 +382,7 @@
 
             let filtered = allClients.filter(c => {
                 if (healthFilter && c.health.status !== healthFilter) return false;
-                if (managerFilter && !(c.tasks.assignees || []).includes(managerFilter)) return false;
+                if (managerFilter && c.account_manager !== managerFilter) return false;
                 return true;
             });
 
@@ -391,9 +393,9 @@
                 filtered.sort((a, b) => a.name.localeCompare(b.name));
             } else if (sortBy === 'touch') {
                 filtered.sort((a, b) => {
-                    const aTouch = Math.min(a.communication.days_since_email ?? 999, a.communication.days_since_call ?? 999);
-                    const bTouch = Math.min(b.communication.days_since_email ?? 999, b.communication.days_since_call ?? 999);
-                    return bTouch - aTouch; // Longest gap first
+                    const aTouch = a.communication.days_since_touchpoint ?? 999;
+                    const bTouch = b.communication.days_since_touchpoint ?? 999;
+                    return bTouch - aTouch;
                 });
             }
 
@@ -409,13 +411,15 @@
 
             grid.innerHTML = clients.map((c, i) => {
                 const s = c.health.status;
-                const dse = c.communication.days_since_email;
-                const dsc = c.communication.days_since_call;
+                const dst = c.communication.days_since_touchpoint;
 
                 return `
                 <div class="client-card health-${s}" onclick="showDetail(${i})" data-idx="${i}">
                     <div class="client-header">
-                        <span class="client-name">${c.name}</span>
+                        <div>
+                            <span class="client-name">${c.name}</span>
+                            ${c.account_manager ? `<div class="account-manager">👤 ${c.account_manager}</div>` : ''}
+                        </div>
                         <span class="health-badge ${s}">
                             <span class="health-dot ${s}"></span>
                             ${s.charAt(0).toUpperCase() + s.slice(1)}
@@ -431,12 +435,12 @@
                             <div class="metric-value ${c.tasks.overdue > 3 ? 'danger' : c.tasks.overdue > 0 ? 'warning' : ''}">${c.tasks.overdue}</div>
                         </div>
                         <div class="metric">
-                            <div class="metric-label">Last Email</div>
-                            <div class="metric-value ${dse > 14 ? 'danger' : dse > 7 ? 'warning' : ''} ${dse == null ? 'muted' : ''}">${dse != null ? dse + 'd' : 'N/A'}</div>
+                            <div class="metric-label">Last Touchpoint</div>
+                            <div class="metric-value ${dst > 14 ? 'danger' : dst > 7 ? 'warning' : ''} ${dst == null ? 'muted' : ''}">${dst != null ? dst + 'd' : 'N/A'}</div>
                         </div>
                         <div class="metric">
-                            <div class="metric-label">Last Call</div>
-                            <div class="metric-value ${dsc > 14 ? 'danger' : dsc > 7 ? 'warning' : ''} ${dsc == null ? 'muted' : ''}">${dsc != null ? dsc + 'd' : 'N/A'}</div>
+                            <div class="metric-label">Sentiment</div>
+                            <div class="metric-value"><span class="sentiment-badge ${c.communication.email_sentiment}">${c.communication.email_sentiment}</span></div>
                         </div>
                     </div>
                     ${c.health.reasons && c.health.reasons[0] !== 'All healthy' ? `
@@ -466,16 +470,23 @@
             let html = '';
 
             // Overview section
+            const dst = c.communication.days_since_touchpoint;
+            const dse = c.communication.days_since_email;
+            const dsc = c.communication.days_since_call;
             html += `<div class="modal-section">
                 <div class="modal-section-title">Overview</div>
                 <div class="detail-grid">
                     <div class="detail-item"><div class="label">Health</div><div class="value"><span class="health-badge ${c.health.status}"><span class="health-dot ${c.health.status}"></span>${c.health.status.toUpperCase()}</span></div></div>
+                    ${c.account_manager ? `<div class="detail-item"><div class="label">Account Manager</div><div class="value" style="font-size:14px">${c.account_manager}</div></div>` : ''}
+                    <div class="detail-item"><div class="label">Last Touchpoint</div><div class="value">${dst != null ? dst + ' days' : 'N/A'}</div></div>
+                    <div class="detail-item"><div class="label">Last Email</div><div class="value" style="font-size:14px">${dse != null ? dse + ' days' : 'N/A'}</div></div>
+                    <div class="detail-item"><div class="label">Last Call</div><div class="value" style="font-size:14px">${dsc != null ? dsc + ' days' : 'N/A'}</div></div>
                     <div class="detail-item"><div class="label">Open Tasks</div><div class="value">${c.tasks.open}</div></div>
                     <div class="detail-item"><div class="label">Overdue</div><div class="value" style="color:${c.tasks.overdue > 0 ? 'var(--danger)' : 'var(--text)'}">${c.tasks.overdue}</div></div>
                     <div class="detail-item"><div class="label">Completion Rate</div><div class="value">${c.tasks.completion_rate}%</div></div>
-                    <div class="detail-item"><div class="label">Avg Days Overdue</div><div class="value">${c.tasks.avg_days_overdue}</div></div>
-                    <div class="detail-item"><div class="label">Email Sentiment</div><div class="value"><span class="sentiment-badge ${c.communication.email_sentiment}">${c.communication.email_sentiment}</span></div></div>
+                    <div class="detail-item"><div class="label">Sentiment</div><div class="value"><span class="sentiment-badge ${c.communication.email_sentiment}">${c.communication.email_sentiment}</span></div></div>
                 </div>
+                ${c.communication.sentiment_reason ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);font-style:italic">"${c.communication.sentiment_reason}"</div>` : ''}
                 ${c.health.reasons.length ? `<div style="margin-top:12px">${c.health.reasons.map(r => `<span class="reason-tag">${r}</span>`).join('')}</div>` : ''}
             </div>`;
 
@@ -489,17 +500,21 @@
                 </div>`;
             }
 
-            // Overdue tasks
+            // Overdue tasks (sorted by most overdue first)
             if (c.tasks.overdue_list && c.tasks.overdue_list.length) {
+                const sorted = [...c.tasks.overdue_list].sort((a, b) => b.days_overdue - a.days_overdue);
                 html += `<div class="modal-section">
-                    <div class="modal-section-title">Overdue Tasks (${c.tasks.overdue_list.length})</div>
-                    ${c.tasks.overdue_list.map(t => `
+                    <div class="modal-section-title">Overdue Tasks (${sorted.length})</div>
+                    ${sorted.map(t => `
                         <div class="task-item">
-                            <a href="${t.url}" target="_blank">${t.name}</a>
-                            <div class="task-meta">
-                                <span class="overdue-badge">${t.days_overdue}d overdue</span>
-                                <span style="margin-left:8px">${t.status}</span>
-                                ${t.assignees && t.assignees.length ? `<span style="margin-left:8px">→ ${t.assignees.join(', ')}</span>` : ''}
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <a href="${t.url}" target="_blank" style="flex:1">${t.name}</a>
+                                <span class="overdue-badge" style="white-space:nowrap;margin-left:12px">${t.days_overdue}d overdue</span>
+                            </div>
+                            <div class="task-meta" style="display:flex;gap:12px;margin-top:6px">
+                                ${t.assignees && t.assignees.length ? `<span>👤 ${t.assignees.join(', ')}</span>` : '<span style="color:var(--warning)">⚠ Unassigned</span>'}
+                                <span>Status: ${t.status}</span>
+                                ${t.url ? `<a href="${t.url}" target="_blank" style="color:var(--pulse-primary);text-decoration:none">Open in ClickUp ↗</a>` : ''}
                             </div>
                         </div>
                     `).join('')}
