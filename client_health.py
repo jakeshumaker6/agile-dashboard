@@ -26,12 +26,11 @@ EXCLUDED_FOLDERS = [
     "Client Template", "2-Day AI POCs", "Internal Projects", "Recurring Clients"
 ]
 
-ACTIVE_CLIENTS = [
-    "ANAD", "BRE Law", "City of Decatur", "DCC", "Family Home & Patio",
-    "FEAST", "GAAPP", "Give Them Wings", "Hungerford", "Main Place",
-    "National Concerts", "Premier Fund Solutions", "S40S",
-    "St. Louis Crossing Church", "Strategic Wealth Group"
-]
+# ACTIVE_CLIENTS is now dynamically fetched from ClickUp Active Accounts list.
+# Only accounts with status "engaged" or "new account" are included.
+
+# Allowed statuses on the Active Accounts list (lowercase for comparison)
+ACTIVE_ACCOUNT_STATUSES = {"engaged", "new account"}
 
 # Cache for client health data (30 min TTL)
 _client_health_cache = {"data": None, "expires": 0}
@@ -277,81 +276,98 @@ def get_cached_sentiment(client_name, emails):
 
 
 # ============================================================================
-# Account Manager from ClickUp Admin Space
+# Active Accounts from ClickUp Admin Space (single source of truth)
 # ============================================================================
 
 ACTIVE_ACCOUNTS_LIST_ID = "901320376565"
 
-# Fuzzy name mapping: ClickUp task name fragment → health dashboard client name
-_ACCOUNT_NAME_MAP = {
+# Short-name aliases: map long ClickUp task names to short dashboard names.
+# If a task name contains the key (lowercase), use the value as display name.
+_SHORT_NAME_ALIASES = {
     "dcc marketing": "DCC",
-    "dcc": "DCC",
     "f.e.a.s.t.": "FEAST",
-    "feast": "FEAST",
     "national association of anorexia": "ANAD",
-    "anad": "ANAD",
-    "bre law": "BRE Law",
-    "city of decatur": "City of Decatur",
-    "family home": "Family Home & Patio",
-    "gaapp": "GAAPP",
-    "give them wings": "Give Them Wings",
-    "hungerford": "Hungerford",
-    "main place": "Main Place",
-    "national concerts": "National Concerts",
-    "premier fund": "Premier Fund Solutions",
-    "s40s": "S40S",
-    "st. louis crossing": "St. Louis Crossing Church",
-    "strategic wealth": "Strategic Wealth Group",
 }
 
-
-def _match_account_name(clickup_name):
-    """Fuzzy match a ClickUp task name to an ACTIVE_CLIENTS name."""
-    name_lower = clickup_name.lower().strip()
-
-    # Direct match
-    for client in ACTIVE_CLIENTS:
-        if client.lower() == name_lower or client.lower() in name_lower or name_lower in client.lower():
-            return client
-
-    # Map-based match
-    for fragment, client in _ACCOUNT_NAME_MAP.items():
-        if fragment in name_lower:
-            return client
-
-    return None
+# Cache for active accounts (same TTL as health data)
+_active_accounts_cache = {"data": None, "expires": 0}
 
 
-def fetch_account_managers(clickup_request_fn):
-    """Fetch account managers from ClickUp Active Accounts list.
-    Returns dict: {client_name: manager_name}
+def _normalize_client_name(raw_name):
+    """Convert a ClickUp task name into a short dashboard-friendly client name."""
+    raw_lower = raw_name.lower().strip()
+    for fragment, short in _SHORT_NAME_ALIASES.items():
+        if fragment in raw_lower:
+            return short
+    # Default: use the task name as-is (trimmed)
+    return raw_name.strip()
+
+
+def fetch_active_accounts(clickup_request_fn):
+    """Fetch active client accounts from ClickUp Active Accounts list.
+
+    Single source of truth for which clients appear on the dashboard.
+    Only includes accounts with status "engaged" or "new account".
+
+    Returns: {
+        "clients": ["ANAD", "DCC", ...],           # display names
+        "managers": {"ANAD": "jake", "DCC": "sean", ...},
+    }
     """
+    global _active_accounts_cache
+    now = time.time()
+    if _active_accounts_cache["data"] and now < _active_accounts_cache["expires"]:
+        return _active_accounts_cache["data"]
+
+    clients = []
     managers = {}
+
     try:
-        tasks_data = clickup_request_fn(f"/list/{ACTIVE_ACCOUNTS_LIST_ID}/task?include_closed=false")
+        # Fetch all tasks (include_closed=false still returns non-closed statuses)
+        tasks_data = clickup_request_fn(
+            f"/list/{ACTIVE_ACCOUNTS_LIST_ID}/task?include_closed=true&subtasks=false"
+        )
         for task in tasks_data.get("tasks", []):
-            client = _match_account_name(task.get("name", ""))
-            if client:
-                assignees = task.get("assignees", [])
-                if assignees:
-                    managers[client] = assignees[0].get("username", "Unassigned")
-                else:
-                    managers[client] = "Unassigned"
-        logger.info(f"Fetched account managers for {len(managers)} clients")
+            status = (task.get("status", {}).get("status") or "").lower().strip()
+            if status not in ACTIVE_ACCOUNT_STATUSES:
+                continue
+
+            display_name = _normalize_client_name(task.get("name", ""))
+            clients.append(display_name)
+
+            assignees = task.get("assignees", [])
+            if assignees:
+                managers[display_name] = assignees[0].get("username", "Unassigned")
+            else:
+                managers[display_name] = "Unassigned"
+
+        clients.sort()
+        logger.info(f"Active accounts from ClickUp: {len(clients)} clients ({', '.join(clients)})")
     except Exception as e:
-        logger.error(f"Error fetching account managers: {e}")
-    return managers
+        logger.error(f"Error fetching active accounts: {e}")
+
+    result = {"clients": clients, "managers": managers}
+    _active_accounts_cache["data"] = result
+    _active_accounts_cache["expires"] = now + CLIENT_HEALTH_CACHE_TTL
+    return result
 
 
 # ============================================================================
 # ClickUp Data
 # ============================================================================
 
-def fetch_client_tasks(clickup_request_fn):
+def fetch_client_tasks(clickup_request_fn, active_clients=None):
     """Fetch tasks for each active client from ClickUp Operations space.
+
+    Args:
+        clickup_request_fn: Function to call ClickUp API.
+        active_clients: List of client display names to match against.
 
     Returns dict: {client_name: [tasks]}
     """
+    if not active_clients:
+        return {}
+
     client_tasks = defaultdict(list)
 
     # 1. Get folders from Operations space
@@ -365,7 +381,7 @@ def fetch_client_tasks(clickup_request_fn):
 
         # Check if this folder is an active client
         matched_client = None
-        for client in ACTIVE_CLIENTS:
+        for client in active_clients:
             if client.lower() == folder_name.lower() or client.lower() in folder_name.lower():
                 matched_client = client
                 break
@@ -393,7 +409,7 @@ def fetch_client_tasks(clickup_request_fn):
         list_name = lst["name"]
         # Match list name to active client
         matched_client = None
-        for client in ACTIVE_CLIENTS:
+        for client in active_clients:
             if client.lower() in list_name.lower() or list_name.lower() in client.lower():
                 matched_client = client
                 break
@@ -535,15 +551,23 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
 
     logger.info("Building client health data from APIs...")
 
+    # 0. Fetch active accounts from ClickUp (single source of truth)
+    accounts_data = fetch_active_accounts(clickup_request_fn)
+    active_clients = accounts_data["clients"]
+    account_managers = accounts_data["managers"]
+
+    if not active_clients:
+        logger.warning("No active accounts found in ClickUp — dashboard will be empty")
+
     # 1. ClickUp tasks
-    client_tasks = fetch_client_tasks(clickup_request_fn)
+    client_tasks = fetch_client_tasks(clickup_request_fn, active_clients=active_clients)
 
     # 2. Grain recordings
     recordings = fetch_grain_recordings()
     client_last_call = {}
     client_recent_calls = defaultdict(list)
     for rec in recordings:
-        matched = match_client_to_recording(rec, ACTIVE_CLIENTS)
+        matched = match_client_to_recording(rec, active_clients)
         if matched:
             rec_date_str = rec.get("date") or rec.get("created_at") or rec.get("start_time") or rec.get("timestamp")
             if rec_date_str:
@@ -577,7 +601,7 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
     # 3. Gmail + Claude sentiment
     gmail_service = get_gmail_service()
     client_email_data = {}
-    for client in ACTIVE_CLIENTS:
+    for client in active_clients:
         emails = search_client_emails(gmail_service, client, max_results=5)
         if emails:
             latest = max(emails, key=lambda e: e.get("date_ts", 0))
@@ -604,14 +628,11 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
                 "recent_emails": [],
             }
 
-    # 3b. Account managers from ClickUp Admin space
-    account_managers = fetch_account_managers(clickup_request_fn)
-
     # 4. Build per-client health data
     now_dt = datetime.now(timezone.utc)
     clients = []
 
-    for client_name in ACTIVE_CLIENTS:
+    for client_name in active_clients:
         tasks = client_tasks.get(client_name, [])
         task_metrics = analyze_client_tasks(tasks)
 
