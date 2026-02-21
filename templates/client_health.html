@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Health | Pulse</title>
+    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-dark: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --pulse-navy: #1E2A4A;
+            --pulse-navy-light: #2D3D5E;
+            --bg-dark: #0F1318;
+            --bg-card: #161B24;
+            --bg-card-hover: #1D242F;
+            --border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --success: #4ADE80;
+            --warning: #FBBF24;
+            --danger: #F87171;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-dark); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+        .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+        .loading-overlay .logo-img { height: 80px; margin-bottom: 24px; }
+        .loading-text { font-size: 16px; color: var(--text-muted); margin-bottom: 24px; }
+        .loading-bar { width: 200px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+        .loading-bar-fill { height: 100%; background: var(--pulse-primary); animation: loading-pulse 1.5s ease-in-out infinite; }
+        @keyframes loading-pulse { 0%,100%{width:20%;margin-left:0} 50%{width:50%;margin-left:25%} }
+
+        .main-content { opacity: 0; transition: opacity 0.3s ease; }
+        .main-content.loaded { opacity: 1; }
+
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 24px; flex-wrap: wrap; gap: 16px;
+        }
+
+        .logo-section { display: flex; align-items: center; gap: 16px; }
+        .logo-img { height: 48px; width: auto; border-radius: 8px; }
+
+        nav { display: flex; gap: 4px; margin-left: 16px; }
+        nav a {
+            padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+            text-decoration: none; transition: all 0.2s;
+        }
+        nav a.active { background: var(--pulse-primary); color: white; }
+        nav a:not(.active) { color: var(--text-muted); background: var(--bg-card); border: 1px solid var(--border); }
+        nav a:not(.active):hover { border-color: #444; background: var(--bg-card-hover); }
+
+        .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+        select, button {
+            background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+            padding: 10px 16px; border-radius: 8px; font-size: 14px; font-family: inherit;
+            cursor: pointer; transition: all 0.2s;
+        }
+        select:hover, button:hover { border-color: #444; background: var(--bg-card-hover); }
+        button.primary { background: var(--pulse-primary); border-color: var(--pulse-primary); color: white; }
+        button.primary:hover { background: var(--pulse-primary-dark); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .spinner {
+            display: inline-block; width: 18px; height: 18px;
+            border: 2px solid var(--border); border-top-color: var(--pulse-primary);
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+            margin-right: 8px; vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Summary cards */
+        .summary-row {
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 16px; margin-bottom: 24px;
+        }
+        @media (max-width: 700px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
+
+        .summary-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px; text-align: center;
+        }
+        .summary-card .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .summary-card .value { font-size: 36px; font-weight: 700; color: #fff; line-height: 1; }
+        .summary-card.red .value { color: var(--danger); }
+        .summary-card.yellow .value { color: var(--warning); }
+        .summary-card.green .value { color: var(--success); }
+
+        /* Client grid */
+        .client-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px; margin-bottom: 32px;
+        }
+
+        .client-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px; cursor: pointer;
+            transition: all 0.2s; position: relative; overflow: hidden;
+        }
+        .client-card:hover { border-color: #444; background: var(--bg-card-hover); transform: translateY(-2px); }
+        .client-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+        }
+        .client-card.health-red::before { background: var(--danger); }
+        .client-card.health-yellow::before { background: var(--warning); }
+        .client-card.health-green::before { background: var(--success); }
+
+        .client-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .client-name { font-size: 16px; font-weight: 600; color: #fff; }
+
+        .health-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px; border-radius: 100px; font-size: 12px; font-weight: 500;
+        }
+        .health-badge.red { background: rgba(248,113,113,0.15); color: var(--danger); }
+        .health-badge.yellow { background: rgba(251,191,36,0.15); color: var(--warning); }
+        .health-badge.green { background: rgba(74,222,128,0.15); color: var(--success); }
+
+        .health-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+        }
+        .health-dot.red { background: var(--danger); }
+        .health-dot.yellow { background: var(--warning); }
+        .health-dot.green { background: var(--success); }
+
+        .client-metrics {
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        .metric { }
+        .metric .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px; }
+        .metric .metric-value { font-size: 18px; font-weight: 600; color: var(--text); }
+        .metric .metric-value.danger { color: var(--danger); }
+        .metric .metric-value.warning { color: var(--warning); }
+        .metric .metric-value.muted { color: var(--text-muted); }
+
+        .client-reasons {
+            margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+        }
+        .reason-tag {
+            display: inline-block; padding: 3px 8px; border-radius: 4px;
+            font-size: 11px; margin: 2px 2px; background: rgba(255,255,255,0.05); color: var(--text-muted);
+        }
+
+        /* Detail modal */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex; align-items: center;
+            justify-content: center; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s ease;
+        }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+
+        .modal {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+            width: 90%; max-width: 800px; max-height: 85vh; display: flex; flex-direction: column;
+            transform: scale(0.95); transition: transform 0.2s ease;
+        }
+        .modal-overlay.visible .modal { transform: scale(1); }
+
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 20px 24px; border-bottom: 1px solid var(--border);
+        }
+        .modal-title { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 12px; }
+        .modal-close {
+            background: none; border: none; color: var(--text-muted); font-size: 24px;
+            cursor: pointer; padding: 4px 8px; line-height: 1;
+        }
+        .modal-close:hover { color: var(--text); }
+
+        .modal-body { padding: 0; overflow-y: auto; flex: 1; }
+
+        .modal-section { padding: 16px 24px; }
+        .modal-section:not(:last-child) { border-bottom: 1px solid var(--border); }
+        .modal-section-title {
+            font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 0.5px; margin-bottom: 12px; font-weight: 500;
+        }
+
+        .detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+        .detail-item { }
+        .detail-item .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
+        .detail-item .value { font-size: 16px; font-weight: 600; color: var(--text); margin-top: 2px; }
+
+        .task-item, .email-item, .call-item {
+            padding: 12px; background: var(--bg-dark); border-radius: 8px;
+            margin-bottom: 8px; transition: background 0.2s;
+        }
+        .task-item:hover, .email-item:hover, .call-item:hover { background: var(--bg-card-hover); }
+
+        .task-item a, .call-item a { color: var(--text); text-decoration: none; font-size: 14px; }
+        .task-item a:hover, .call-item a:hover { color: var(--pulse-primary); }
+        .task-meta, .email-meta, .call-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        .overdue-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 500; background: rgba(248,113,113,0.15); color: var(--danger);
+        }
+
+        .email-subject { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+        .email-snippet { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+        .sentiment-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;
+        }
+        .sentiment-badge.positive { background: rgba(74,222,128,0.15); color: var(--success); }
+        .sentiment-badge.neutral { background: rgba(255,255,255,0.05); color: var(--text-muted); }
+        .sentiment-badge.mildly_negative { background: rgba(251,191,36,0.15); color: var(--warning); }
+        .sentiment-badge.negative { background: rgba(248,113,113,0.15); color: var(--danger); }
+
+        .empty-state { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; }
+
+        footer {
+            margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border);
+            text-align: center; color: var(--text-muted); font-size: 12px;
+        }
+        footer a { color: var(--pulse-primary); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <img src="/static/logo.jpeg" alt="Pulse" class="logo-img">
+        <div class="loading-text">Loading client health data...</div>
+        <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span id="modalHealthDot" class="health-dot green"></span>
+                    <span id="modalClientName">Client</span>
+                </div>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <div class="container main-content" id="mainContent">
+        <header>
+            <div class="logo-section">
+                <img src="/static/logo.jpeg" alt="Pulse" class="logo-img">
+                <nav>
+                    <a href="/">Sprint</a>
+                    <a href="/client-health" class="active">Client Health</a>
+                </nav>
+            </div>
+            <div class="controls">
+                <select id="healthFilter" onchange="applyFilters()">
+                    <option value="">All Statuses</option>
+                    <option value="red">🔴 Red</option>
+                    <option value="yellow">🟡 Yellow</option>
+                    <option value="green">🟢 Green</option>
+                </select>
+                <select id="sortBy" onchange="applyFilters()">
+                    <option value="health">Sort: Health (worst first)</option>
+                    <option value="name">Sort: Alphabetical</option>
+                    <option value="touch">Sort: Last Touchpoint</option>
+                </select>
+                <select id="managerFilter" onchange="applyFilters()">
+                    <option value="">All Account Managers</option>
+                </select>
+                <button onclick="loadData(true)" id="refreshBtn" class="primary">
+                    <span class="spinner" style="display:none" id="refreshSpinner"></span>
+                    Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Summary Row -->
+        <div class="summary-row">
+            <div class="summary-card"><div class="label">Total Clients</div><div class="value" id="totalClients">-</div></div>
+            <div class="summary-card red"><div class="label">🔴 Red</div><div class="value" id="redCount">-</div></div>
+            <div class="summary-card yellow"><div class="label">🟡 Yellow</div><div class="value" id="yellowCount">-</div></div>
+            <div class="summary-card green"><div class="label">🟢 Green</div><div class="value" id="greenCount">-</div></div>
+        </div>
+
+        <!-- Client Grid -->
+        <div class="client-grid" id="clientGrid">
+            <div class="empty-state">Loading client data...</div>
+        </div>
+
+        <footer>
+            <a href="https://pulsemarketing.co" target="_blank">Pulse Marketing</a> &bull;
+            Client Health Dashboard &bull;
+            Data from ClickUp, Grain & Gmail &bull;
+            <span id="lastUpdated"></span>
+        </footer>
+    </div>
+
+    <script>
+        let allClients = [];
+
+        document.addEventListener('DOMContentLoaded', () => loadData(false));
+
+        async function loadData(force) {
+            const btn = document.getElementById('refreshBtn');
+            const spinner = document.getElementById('refreshSpinner');
+            btn.disabled = true;
+            spinner.style.display = 'inline-block';
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+
+            try {
+                const url = `/api/client-health${force ? '?force=true' : ''}`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+
+                if (data.error) {
+                    document.getElementById('clientGrid').innerHTML = `<div class="empty-state">Error: ${data.error}</div>`;
+                    return;
+                }
+
+                allClients = data.clients || [];
+
+                // Update summary
+                document.getElementById('totalClients').textContent = data.summary.total;
+                document.getElementById('redCount').textContent = data.summary.red;
+                document.getElementById('yellowCount').textContent = data.summary.yellow;
+                document.getElementById('greenCount').textContent = data.summary.green;
+                document.getElementById('lastUpdated').textContent = `Updated: ${new Date(data.last_updated).toLocaleString()}`;
+
+                // Populate manager filter
+                populateManagerFilter();
+                applyFilters();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('clientGrid').innerHTML = `<div class="empty-state">Failed to load data</div>`;
+            } finally {
+                btn.disabled = false;
+                spinner.style.display = 'none';
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                document.getElementById('mainContent').classList.add('loaded');
+            }
+        }
+
+        function populateManagerFilter() {
+            const managers = new Set();
+            allClients.forEach(c => (c.tasks.assignees || []).forEach(a => managers.add(a)));
+            const select = document.getElementById('managerFilter');
+            // Keep first option, clear rest
+            while (select.options.length > 1) select.remove(1);
+            [...managers].sort().forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m; opt.textContent = m;
+                select.appendChild(opt);
+            });
+        }
+
+        function applyFilters() {
+            const healthFilter = document.getElementById('healthFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+            const managerFilter = document.getElementById('managerFilter').value;
+
+            let filtered = allClients.filter(c => {
+                if (healthFilter && c.health.status !== healthFilter) return false;
+                if (managerFilter && !(c.tasks.assignees || []).includes(managerFilter)) return false;
+                return true;
+            });
+
+            const statusOrder = {red: 0, yellow: 1, green: 2};
+            if (sortBy === 'health') {
+                filtered.sort((a, b) => (statusOrder[a.health.status] || 3) - (statusOrder[b.health.status] || 3) || a.name.localeCompare(b.name));
+            } else if (sortBy === 'name') {
+                filtered.sort((a, b) => a.name.localeCompare(b.name));
+            } else if (sortBy === 'touch') {
+                filtered.sort((a, b) => {
+                    const aTouch = Math.min(a.communication.days_since_email ?? 999, a.communication.days_since_call ?? 999);
+                    const bTouch = Math.min(b.communication.days_since_email ?? 999, b.communication.days_since_call ?? 999);
+                    return bTouch - aTouch; // Longest gap first
+                });
+            }
+
+            renderClients(filtered);
+        }
+
+        function renderClients(clients) {
+            const grid = document.getElementById('clientGrid');
+            if (!clients.length) {
+                grid.innerHTML = '<div class="empty-state">No clients match your filters</div>';
+                return;
+            }
+
+            grid.innerHTML = clients.map((c, i) => {
+                const s = c.health.status;
+                const dse = c.communication.days_since_email;
+                const dsc = c.communication.days_since_call;
+
+                return `
+                <div class="client-card health-${s}" onclick="showDetail(${i})" data-idx="${i}">
+                    <div class="client-header">
+                        <span class="client-name">${c.name}</span>
+                        <span class="health-badge ${s}">
+                            <span class="health-dot ${s}"></span>
+                            ${s.charAt(0).toUpperCase() + s.slice(1)}
+                        </span>
+                    </div>
+                    <div class="client-metrics">
+                        <div class="metric">
+                            <div class="metric-label">Open Tasks</div>
+                            <div class="metric-value">${c.tasks.open}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Overdue</div>
+                            <div class="metric-value ${c.tasks.overdue > 3 ? 'danger' : c.tasks.overdue > 0 ? 'warning' : ''}">${c.tasks.overdue}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Last Email</div>
+                            <div class="metric-value ${dse > 14 ? 'danger' : dse > 7 ? 'warning' : ''} ${dse == null ? 'muted' : ''}">${dse != null ? dse + 'd' : 'N/A'}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Last Call</div>
+                            <div class="metric-value ${dsc > 14 ? 'danger' : dsc > 7 ? 'warning' : ''} ${dsc == null ? 'muted' : ''}">${dsc != null ? dsc + 'd' : 'N/A'}</div>
+                        </div>
+                    </div>
+                    ${c.health.reasons && c.health.reasons[0] !== 'All healthy' ? `
+                    <div class="client-reasons">
+                        ${c.health.reasons.map(r => `<span class="reason-tag">${r}</span>`).join('')}
+                    </div>` : ''}
+                </div>`;
+            }).join('');
+
+            // Update data-idx to actual client index in allClients
+            grid.querySelectorAll('.client-card').forEach(card => {
+                const name = card.querySelector('.client-name').textContent;
+                const realIdx = allClients.findIndex(c => c.name === name);
+                card.setAttribute('onclick', `showDetail(${realIdx})`);
+            });
+        }
+
+        function showDetail(idx) {
+            const c = allClients[idx];
+            if (!c) return;
+
+            const dot = document.getElementById('modalHealthDot');
+            dot.className = `health-dot ${c.health.status}`;
+            document.getElementById('modalClientName').textContent = c.name;
+
+            const body = document.getElementById('modalBody');
+            let html = '';
+
+            // Overview section
+            html += `<div class="modal-section">
+                <div class="modal-section-title">Overview</div>
+                <div class="detail-grid">
+                    <div class="detail-item"><div class="label">Health</div><div class="value"><span class="health-badge ${c.health.status}"><span class="health-dot ${c.health.status}"></span>${c.health.status.toUpperCase()}</span></div></div>
+                    <div class="detail-item"><div class="label">Open Tasks</div><div class="value">${c.tasks.open}</div></div>
+                    <div class="detail-item"><div class="label">Overdue</div><div class="value" style="color:${c.tasks.overdue > 0 ? 'var(--danger)' : 'var(--text)'}">${c.tasks.overdue}</div></div>
+                    <div class="detail-item"><div class="label">Completion Rate</div><div class="value">${c.tasks.completion_rate}%</div></div>
+                    <div class="detail-item"><div class="label">Avg Days Overdue</div><div class="value">${c.tasks.avg_days_overdue}</div></div>
+                    <div class="detail-item"><div class="label">Email Sentiment</div><div class="value"><span class="sentiment-badge ${c.communication.email_sentiment}">${c.communication.email_sentiment}</span></div></div>
+                </div>
+                ${c.health.reasons.length ? `<div style="margin-top:12px">${c.health.reasons.map(r => `<span class="reason-tag">${r}</span>`).join('')}</div>` : ''}
+            </div>`;
+
+            // Assignees
+            if (c.tasks.assignees && c.tasks.assignees.length) {
+                html += `<div class="modal-section">
+                    <div class="modal-section-title">Account Team</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        ${c.tasks.assignees.map(a => `<span style="padding:4px 12px;background:var(--bg-dark);border-radius:6px;font-size:13px">${a}</span>`).join('')}
+                    </div>
+                </div>`;
+            }
+
+            // Overdue tasks
+            if (c.tasks.overdue_list && c.tasks.overdue_list.length) {
+                html += `<div class="modal-section">
+                    <div class="modal-section-title">Overdue Tasks (${c.tasks.overdue_list.length})</div>
+                    ${c.tasks.overdue_list.map(t => `
+                        <div class="task-item">
+                            <a href="${t.url}" target="_blank">${t.name}</a>
+                            <div class="task-meta">
+                                <span class="overdue-badge">${t.days_overdue}d overdue</span>
+                                <span style="margin-left:8px">${t.status}</span>
+                                ${t.assignees && t.assignees.length ? `<span style="margin-left:8px">→ ${t.assignees.join(', ')}</span>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>`;
+            }
+
+            // Recent emails
+            const emails = c.communication.recent_emails || [];
+            html += `<div class="modal-section">
+                <div class="modal-section-title">Recent Emails (${emails.length})</div>
+                ${emails.length ? emails.map(e => `
+                    <div class="email-item">
+                        <div class="email-subject">${e.subject}</div>
+                        <div class="email-meta">${e.from} · ${e.date ? new Date(e.date).toLocaleDateString() : 'N/A'}</div>
+                        <div class="email-snippet">${e.snippet}</div>
+                    </div>
+                `).join('') : '<div class="empty-state">No recent emails found</div>'}
+            </div>`;
+
+            // Recent calls
+            const calls = c.communication.recent_calls || [];
+            html += `<div class="modal-section">
+                <div class="modal-section-title">Recent Calls (${calls.length})</div>
+                ${calls.length ? calls.map(cl => `
+                    <div class="call-item">
+                        <a href="${cl.url}" target="_blank">${cl.title}</a>
+                        <div class="call-meta">${cl.date ? new Date(cl.date).toLocaleDateString() : 'N/A'}</div>
+                    </div>
+                `).join('') : '<div class="empty-state">No recent calls found</div>'}
+            </div>`;
+
+            body.innerHTML = html;
+            document.getElementById('detailModal').classList.add('visible');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    </script>
+</body>
+</html>

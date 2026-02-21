@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from client_health import get_client_health_data
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
@@ -1125,6 +1126,30 @@ def api_refresh_cache():
     if success:
         return jsonify({"status": "success", "message": "Cache refreshed successfully"})
     return jsonify({"status": "error", "message": "Cache refresh failed"}), 500
+
+
+# ============================================================================
+# Client Health Routes
+# ============================================================================
+
+@app.route("/client-health")
+@login_required
+def client_health():
+    """Serve the client health dashboard page."""
+    return render_template("client_health.html")
+
+
+@app.route("/api/client-health")
+@login_required
+def api_client_health():
+    """Get client health data from ClickUp, Grain, and Gmail."""
+    try:
+        force = request.args.get("force", "false").lower() == "true"
+        data = get_client_health_data(clickup_request, force_refresh=force)
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error in api_client_health: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 # ============================================================================
