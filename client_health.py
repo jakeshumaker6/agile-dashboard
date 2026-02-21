@@ -29,8 +29,8 @@ EXCLUDED_FOLDERS = [
 # ACTIVE_CLIENTS is now dynamically fetched from ClickUp Active Accounts list.
 # Only accounts with status "engaged" or "new account" are included.
 
-# Allowed statuses on the Active Accounts list (lowercase for comparison)
-ACTIVE_ACCOUNT_STATUSES = {"engaged", "new account"}
+# Only "engaged" accounts appear on the dashboard
+ACTIVE_ACCOUNT_STATUSES = {"engaged"}
 
 # Cache for client health data (30 min TTL)
 _client_health_cache = {"data": None, "expires": 0}
