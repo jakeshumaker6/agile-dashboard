@@ -257,7 +257,19 @@ def match_client_to_recording(recording, client_names):
 # Gmail API
 # ============================================================================
 
-def get_gmail_service():
+PULSE_TEAM_EMAILS = [
+    "jake@pulsemarketing.co",
+    "sean@pulsemarketing.co",
+    "bartosz@pulsemarketing.co",
+    "luke@pulsemarketing.co",
+    "sam@pulsemarketing.co",
+    "razvan@pulsemarketing.co",
+    "adri@pulsemarketing.co",
+    "walter@pulsemarketing.co",
+]
+
+
+def get_gmail_service(subject="jake@pulsemarketing.co"):
     """Build Gmail API service using service account with domain-wide delegation."""
     try:
         from google.oauth2 import service_account
@@ -270,7 +282,7 @@ def get_gmail_service():
             credentials = service_account.Credentials.from_service_account_info(
                 sa_info,
                 scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-                subject="jake@pulsemarketing.co"
+                subject=subject
             )
         else:
             sa_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
@@ -278,7 +290,7 @@ def get_gmail_service():
             credentials = service_account.Credentials.from_service_account_file(
                 sa_path,
                 scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-                subject="jake@pulsemarketing.co"
+                subject=subject
             )
 
         return build("gmail", "v1", credentials=credentials, cache_discovery=False)
@@ -286,8 +298,30 @@ def get_gmail_service():
         logger.warning("google-auth or google-api-python-client not installed")
         return None
     except Exception as e:
-        logger.error(f"Error building Gmail service: {e}")
+        logger.error(f"Error building Gmail service for {subject}: {e}")
         return None
+
+
+def search_client_emails_all_accounts(client_name, max_results=3):
+    """Search all Pulse team mailboxes for client emails, return deduplicated top results."""
+    all_emails = []
+    seen_ids = set()
+    for email_addr in PULSE_TEAM_EMAILS:
+        try:
+            svc = get_gmail_service(subject=email_addr)
+            if not svc:
+                continue
+            results = search_client_emails(svc, client_name, max_results=max_results)
+            for e in results:
+                if e["id"] not in seen_ids:
+                    seen_ids.add(e["id"])
+                    e["mailbox"] = email_addr
+                    all_emails.append(e)
+        except Exception as exc:
+            logger.warning(f"Gmail search failed for {email_addr}: {exc}")
+    # Sort by date descending, return top N
+    all_emails.sort(key=lambda x: x.get("date_ts", 0), reverse=True)
+    return all_emails[:max_results]
 
 
 def search_client_emails(gmail_service, client_name, max_results=3):
@@ -845,7 +879,6 @@ def build_client_health_data(clickup_request_fn):
         client_recent_calls[client] = client_recent_calls[client][:5]  # Keep top 5
 
     # 3. Gmail (fetch emails for all clients first, then batch Claude sentiment)
-    gmail_service = get_gmail_service()
     client_email_data = {}
     clients_with_emails = {}  # {client_name: [emails]} for Claude batch
 
@@ -861,9 +894,9 @@ def build_client_health_data(clickup_request_fn):
         if configured_domains:
             # Build Gmail query: from:domain1.com OR from:domain2.com
             domain_query = " OR ".join(f"from:{d}" for d in configured_domains)
-            emails = search_client_emails(gmail_service, domain_query, max_results=3)
+            emails = search_client_emails_all_accounts(domain_query, max_results=3)
         else:
-            emails = search_client_emails(gmail_service, client, max_results=3)
+            emails = search_client_emails_all_accounts(client, max_results=3)
         if emails:
             latest = max(emails, key=lambda e: e.get("date_ts", 0))
             clients_with_emails[client] = emails
