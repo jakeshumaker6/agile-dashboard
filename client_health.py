@@ -160,12 +160,13 @@ def get_gmail_service():
         return None
 
 
-def search_client_emails(gmail_service, client_name, max_results=5):
+def search_client_emails(gmail_service, client_name, max_results=3):
     """Search Gmail for recent emails mentioning a client."""
     if not gmail_service:
         return []
 
     try:
+        logger.info(f"Gmail: searching for '{client_name}'...")
         # Search in subject and body for client name
         query = f'"{client_name}"'
         results = gmail_service.users().messages().list(
@@ -173,6 +174,7 @@ def search_client_emails(gmail_service, client_name, max_results=5):
         ).execute()
 
         messages = results.get("messages", [])
+        logger.info(f"Gmail: found {len(messages)} messages for '{client_name}'")
         emails = []
 
         for msg_ref in messages:
@@ -208,6 +210,17 @@ def claude_sentiment(client_name, emails):
         return {"rating": "neutral", "reason": "No recent emails to analyze"}
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        # Try loading from .env.local
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env.local")
+        try:
+            with open(env_path, 'r') as f:
+                for line in f:
+                    if line.strip().startswith("ANTHROPIC_API_KEY="):
+                        api_key = line.strip().split("=", 1)[1]
+                        break
+        except Exception:
+            pass
     if not api_key:
         return {"rating": "neutral", "reason": "No API key configured"}
 
