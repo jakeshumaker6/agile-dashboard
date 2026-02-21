@@ -494,8 +494,23 @@
                     <div class="detail-item"><div class="label">Completion Rate</div><div class="value">${c.tasks.completion_rate}%</div></div>
                     <div class="detail-item"><div class="label">Sentiment</div><div class="value"><span class="sentiment-badge ${c.communication.email_sentiment}">${c.communication.email_sentiment}</span></div></div>
                 </div>
+                ${c.communication.sentiment_overridden ? `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">✏️ Manual override${c.communication.original_sentiment ? ` (AI: ${c.communication.original_sentiment})` : ''}</div>` : ''}
                 ${c.communication.sentiment_reason ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);font-style:italic">"${c.communication.sentiment_reason}"</div>` : ''}
                 ${c.health.reasons.length ? `<div style="margin-top:12px">${c.health.reasons.map(r => `<span class="reason-tag">${r}</span>`).join('')}</div>` : ''}
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+                    <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">Override Sentiment</div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <select id="override-rating-${c.name.replace(/[^a-zA-Z0-9]/g,'_')}" style="background:var(--bg-dark);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px;font-family:Inter,sans-serif">
+                            <option value="positive" ${c.communication.email_sentiment==='positive'?'selected':''}>Positive</option>
+                            <option value="neutral" ${c.communication.email_sentiment==='neutral'?'selected':''}>Neutral</option>
+                            <option value="concerned" ${c.communication.email_sentiment==='concerned'?'selected':''}>Concerned</option>
+                            <option value="negative" ${c.communication.email_sentiment==='negative'?'selected':''}>Negative</option>
+                        </select>
+                        <input id="override-reason-${c.name.replace(/[^a-zA-Z0-9]/g,'_')}" type="text" placeholder="Reason (optional)" value="${c.communication.sentiment_overridden ? (c.communication.sentiment_reason||'').replace(/"/g,'&quot;') : ''}" style="flex:1;min-width:200px;background:var(--bg-dark);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px;font-family:Inter,sans-serif">
+                        <button onclick="saveSentimentOverride('${c.name}','${c.name.replace(/[^a-zA-Z0-9]/g,'_')}')" style="background:var(--pulse-primary);color:white;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:500;cursor:pointer;font-family:Inter,sans-serif">Save</button>
+                        ${c.communication.sentiment_overridden ? `<button onclick="removeSentimentOverride('${c.name}')" style="background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;font-family:Inter,sans-serif">Reset to AI</button>` : ''}
+                    </div>
+                </div>
             </div>`;
 
             // Assignees
@@ -565,6 +580,36 @@
         }
 
         document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+        function saveSentimentOverride(clientName, safeId) {
+            const rating = document.getElementById('override-rating-' + safeId).value;
+            const reason = document.getElementById('override-reason-' + safeId).value;
+            fetch('/api/client-health/sentiment-override', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({client: clientName, rating: rating, reason: reason, overridden_by: 'User'})
+            }).then(r => r.json()).then(d => {
+                if (d.status === 'saved') {
+                    alert('Sentiment override saved for ' + clientName);
+                    location.reload();
+                } else {
+                    alert('Error: ' + (d.error || 'Unknown error'));
+                }
+            }).catch(e => alert('Error: ' + e.message));
+        }
+
+        function removeSentimentOverride(clientName) {
+            fetch('/api/client-health/sentiment-override?client=' + encodeURIComponent(clientName), {
+                method: 'DELETE'
+            }).then(r => r.json()).then(d => {
+                if (d.status === 'deleted') {
+                    alert('Override removed for ' + clientName + '. AI sentiment restored.');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (d.error || 'Unknown error'));
+                }
+            }).catch(e => alert('Error: ' + e.message));
+        }
     </script>
 </body>
 </html>

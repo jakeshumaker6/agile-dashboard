@@ -18,8 +18,10 @@ from functools import wraps
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from client_health import build_client_health_data
 from client_health_cache import read_cache, write_cache, is_cache_empty
+from sentiment_overrides import load_overrides, save_override, delete_override, apply_overrides
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 import pytz
 
 # Configure logging
@@ -1138,6 +1140,8 @@ def refresh_client_health_cache():
     logger.info("Starting client health cache refresh...")
     try:
         data = build_client_health_data(clickup_request)
+        # Apply sentiment overrides before caching
+        apply_overrides(data)
         write_cache(data)
         logger.info("Client health cache refresh completed")
         return True
@@ -1156,11 +1160,19 @@ def client_health():
 @app.route("/api/client-health")
 @login_required
 def api_client_health():
-    """Get client health data — always served from SQLite cache."""
+    """Get client health data — always served from SQLite cache. Never makes user wait."""
     try:
         data = read_cache()
         if data is None:
-            return jsonify({"error": "Cache is empty. A refresh is in progress — try again in a minute."}), 503
+            return jsonify({
+                "status": "loading",
+                "message": "Building client health data... this takes a few minutes on first load.",
+                "clients": [],
+                "summary": {"total": 0, "red": 0, "yellow": 0, "green": 0},
+                "last_updated": None
+            })
+        # Apply live overrides on top of cached data (so overrides appear immediately)
+        apply_overrides(data)
         return jsonify(data)
     except Exception as e:
         logger.error(f"Error in api_client_health: {str(e)}", exc_info=True)
@@ -1175,6 +1187,42 @@ def api_client_health_refresh():
     t = threading.Thread(target=refresh_client_health_cache, daemon=True)
     t.start()
     return jsonify({"status": "started", "message": "Refresh started in background. Reload in ~60s."})
+
+
+@app.route("/api/client-health/sentiment-override", methods=["POST"])
+@login_required
+def api_sentiment_override_post():
+    """Save a manual sentiment override for a client."""
+    try:
+        body = request.get_json()
+        if not body or not body.get("client") or not body.get("rating"):
+            return jsonify({"error": "client and rating are required"}), 400
+        rating = body["rating"].lower()
+        if rating not in ("positive", "neutral", "concerned", "negative"):
+            return jsonify({"error": "rating must be positive/neutral/concerned/negative"}), 400
+        save_override(body["client"], rating, body.get("reason", ""), body.get("overridden_by", "User"))
+        return jsonify({"status": "saved"})
+    except Exception as e:
+        logger.error(f"Error saving sentiment override: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/client-health/sentiment-override", methods=["DELETE"])
+@login_required
+def api_sentiment_override_delete():
+    """Remove a manual sentiment override for a client."""
+    client = request.args.get("client")
+    if not client:
+        return jsonify({"error": "client parameter required"}), 400
+    delete_override(client)
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/api/client-health/sentiment-overrides")
+@login_required
+def api_sentiment_overrides_list():
+    """Get all current sentiment overrides."""
+    return jsonify(load_overrides())
 
 
 # ============================================================================
@@ -1197,17 +1245,18 @@ def init_scheduler():
         replace_existing=True
     )
 
-    # Client health cache refresh at midnight ET
+    # Client health cache refresh every 30 minutes
+    from apscheduler.triggers.interval import IntervalTrigger
     scheduler.add_job(
         func=refresh_client_health_cache,
-        trigger=CronTrigger(hour=0, minute=0, timezone=eastern),
-        id='client_health_nightly',
-        name='Refresh client health cache at midnight ET',
+        trigger=IntervalTrigger(minutes=30),
+        id='client_health_refresh',
+        name='Refresh client health cache every 30 minutes',
         replace_existing=True
     )
 
     scheduler.start()
-    logger.info("Scheduler started - daily cache at 2pm ET, client health at midnight ET")
+    logger.info("Scheduler started - daily cache at 2pm ET, client health every 30min")
 
     # Ensure scheduler shuts down cleanly
     atexit.register(lambda: scheduler.shutdown())

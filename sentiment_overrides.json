@@ -1,0 +1,14 @@
+{
+  "DCC": {
+    "rating": "concerned",
+    "reason": "Project going well but high expectations before March 4th deadline",
+    "overridden_by": "Jake",
+    "overridden_at": "2026-02-21T22:15:34.925425+00:00"
+  },
+  "GAAPP": {
+    "rating": "neutral",
+    "reason": "Translation job backlog is not a concern",
+    "overridden_by": "Jake",
+    "overridden_at": "2026-02-21T22:15:34.926093+00:00"
+  }
+}
