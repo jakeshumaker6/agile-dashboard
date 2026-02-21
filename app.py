@@ -16,7 +16,8 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
-from client_health import get_client_health_data
+from client_health import build_client_health_data
+from client_health_cache import read_cache, write_cache, is_cache_empty
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
@@ -1132,6 +1133,19 @@ def api_refresh_cache():
 # Client Health Routes
 # ============================================================================
 
+def refresh_client_health_cache():
+    """Rebuild the client health SQLite cache (called by scheduler or manually)."""
+    logger.info("Starting client health cache refresh...")
+    try:
+        data = build_client_health_data(clickup_request)
+        write_cache(data)
+        logger.info("Client health cache refresh completed")
+        return True
+    except Exception as e:
+        logger.error(f"Client health cache refresh failed: {e}", exc_info=True)
+        return False
+
+
 @app.route("/client-health")
 @login_required
 def client_health():
@@ -1142,14 +1156,25 @@ def client_health():
 @app.route("/api/client-health")
 @login_required
 def api_client_health():
-    """Get client health data from ClickUp, Grain, and Gmail."""
+    """Get client health data — always served from SQLite cache."""
     try:
-        force = request.args.get("force", "false").lower() == "true"
-        data = get_client_health_data(clickup_request, force_refresh=force)
+        data = read_cache()
+        if data is None:
+            return jsonify({"error": "Cache is empty. A refresh is in progress — try again in a minute."}), 503
         return jsonify(data)
     except Exception as e:
         logger.error(f"Error in api_client_health: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/client-health/refresh", methods=["POST"])
+@login_required
+def api_client_health_refresh():
+    """Manually trigger a client health cache rebuild."""
+    import threading
+    t = threading.Thread(target=refresh_client_health_cache, daemon=True)
+    t.start()
+    return jsonify({"status": "started", "message": "Refresh started in background. Reload in ~60s."})
 
 
 # ============================================================================
@@ -1172,8 +1197,17 @@ def init_scheduler():
         replace_existing=True
     )
 
+    # Client health cache refresh at midnight ET
+    scheduler.add_job(
+        func=refresh_client_health_cache,
+        trigger=CronTrigger(hour=0, minute=0, timezone=eastern),
+        id='client_health_nightly',
+        name='Refresh client health cache at midnight ET',
+        replace_existing=True
+    )
+
     scheduler.start()
-    logger.info("Scheduler started - daily cache refresh scheduled for 2pm ET")
+    logger.info("Scheduler started - daily cache at 2pm ET, client health at midnight ET")
 
     # Ensure scheduler shuts down cleanly
     atexit.register(lambda: scheduler.shutdown())
@@ -1189,6 +1223,12 @@ if os.environ.get('WERKZEUG_RUN_MAIN') != 'true' or not app.debug:
         logger.info("No daily cache found - will refresh on first request or at 2pm ET")
 
     _scheduler = init_scheduler()
+
+    # First-run: if client health DB is empty, do an immediate build in background
+    if is_cache_empty():
+        import threading
+        logger.info("Client health cache is empty — triggering first-run build")
+        threading.Thread(target=refresh_client_health_cache, daemon=True).start()
 
 
 if __name__ == "__main__":

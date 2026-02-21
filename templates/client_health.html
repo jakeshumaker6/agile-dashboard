@@ -330,9 +330,17 @@
             spinner.style.display = 'inline-block';
             document.getElementById('loadingOverlay').classList.remove('hidden');
 
+            // If force-refresh requested, kick off background rebuild first
+            if (force) {
+                try {
+                    await fetch('/api/client-health/refresh', {method: 'POST'});
+                    // Wait a moment then poll for fresh data
+                    await new Promise(r => setTimeout(r, 3000));
+                } catch (e) { console.warn('Refresh trigger failed', e); }
+            }
+
             try {
-                const url = `/api/client-health${force ? '?force=true' : ''}`;
-                const resp = await fetch(url);
+                const resp = await fetch('/api/client-health');
                 const data = await resp.json();
 
                 if (data.error) {

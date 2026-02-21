@@ -21,3 +21,4 @@ Thumbs.db
 # Generated data files
 daily_cache.json
 team_capacity.json
+*.db

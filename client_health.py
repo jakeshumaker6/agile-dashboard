@@ -32,8 +32,7 @@ EXCLUDED_FOLDERS = [
 # Only "engaged" accounts appear on the dashboard
 ACTIVE_ACCOUNT_STATUSES = {"engaged"}
 
-# Cache for client health data (30 min TTL)
-_client_health_cache = {"data": None, "expires": 0}
+# TTL constant kept for sub-caches (active accounts, sentiment)
 CLIENT_HEALTH_CACHE_TTL = 1800  # 30 minutes
 
 # ============================================================================
@@ -550,18 +549,11 @@ def calculate_health(task_metrics, days_since_email, days_since_call, email_sent
 # Main Aggregation
 # ============================================================================
 
-def get_client_health_data(clickup_request_fn, force_refresh=False):
+def build_client_health_data(clickup_request_fn):
     """
-    Aggregate client health data from all sources.
-    Caches for 30 minutes.
+    Aggregate client health data from all sources (ClickUp, Grain, Gmail, Claude).
+    This is the expensive function — call it from a background job only.
     """
-    global _client_health_cache
-
-    now = time.time()
-    if not force_refresh and _client_health_cache["data"] and now < _client_health_cache["expires"]:
-        logger.info("Returning cached client health data")
-        return _client_health_cache["data"]
-
     logger.info("Building client health data from APIs...")
 
     # 0. Fetch active accounts from ClickUp (single source of truth)
@@ -713,8 +705,5 @@ def get_client_health_data(clickup_request_fn, force_refresh=False):
         "last_updated": now_dt.isoformat(),
     }
 
-    _client_health_cache["data"] = result
-    _client_health_cache["expires"] = now + CLIENT_HEALTH_CACHE_TTL
     logger.info(f"Client health data built: {result['summary']}")
-
     return result
