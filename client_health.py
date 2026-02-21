@@ -287,6 +287,85 @@ def get_cached_sentiment(client_name, emails):
     return result
 
 
+def batch_claude_sentiment(clients_with_emails):
+    """Batch sentiment analysis: one Claude call for all clients.
+    Returns dict: {client_name: {"rating": "...", "reason": "..."}}
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env.local")
+        try:
+            with open(env_path, 'r') as f:
+                for line in f:
+                    if line.strip().startswith("ANTHROPIC_API_KEY="):
+                        api_key = line.strip().split("=", 1)[1]
+                        break
+        except Exception:
+            pass
+
+    if not api_key:
+        return {c: {"rating": "neutral", "reason": "No API key"} for c in clients_with_emails}
+
+    # Build batch prompt
+    batch_text = "Analyze the client relationship health for each client below based on their recent emails.\n"
+    batch_text += "For EACH client, rate: positive, neutral, concerned, or negative.\n"
+    batch_text += 'Respond with JSON only: {"results": {"ClientName": {"rating": "...", "reason": "one sentence"}, ...}}\n\n'
+
+    for client_name, emails in clients_with_emails.items():
+        batch_text += f"=== {client_name} ===\n"
+        for e in emails[:2]:  # Just top 2 emails per client to keep token count manageable
+            batch_text += f"Subject: {e.get('subject', '')}\nSnippet: {e.get('snippet', '')}\n"
+        batch_text += "\n"
+
+    request_body = {
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 4000,
+        "messages": [{"role": "user", "content": batch_text}]
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01"
+    }
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(request_body).encode(),
+        headers=headers,
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            data = json.loads(response.read().decode())
+            text = data["content"][0]["text"]
+            # Parse JSON from response
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                parsed = json.loads(text[start:end])
+                results = parsed.get("results", parsed)
+                # Map results back, handling name variations
+                mapped = {}
+                for client_name in clients_with_emails:
+                    if client_name in results:
+                        mapped[client_name] = results[client_name]
+                    else:
+                        # Try case-insensitive match
+                        for k, v in results.items():
+                            if k.lower() == client_name.lower():
+                                mapped[client_name] = v
+                                break
+                        else:
+                            mapped[client_name] = {"rating": "neutral", "reason": "Not analyzed"}
+                return mapped
+    except Exception as e:
+        logger.error(f"Batch Claude sentiment error: {e}")
+
+    return {c: {"rating": "neutral", "reason": "Analysis unavailable"} for c in clients_with_emails}
+
+
 # ============================================================================
 # Active Accounts from ClickUp Admin Space (single source of truth)
 # ============================================================================
@@ -603,20 +682,21 @@ def build_client_health_data(clickup_request_fn):
         client_recent_calls[client].sort(key=lambda x: x["date"], reverse=True)
         client_recent_calls[client] = client_recent_calls[client][:5]  # Keep top 5
 
-    # 3. Gmail + Claude sentiment
+    # 3. Gmail (fetch emails for all clients first, then batch Claude sentiment)
     gmail_service = get_gmail_service()
     client_email_data = {}
+    clients_with_emails = {}  # {client_name: [emails]} for Claude batch
+
     for client in active_clients:
-        emails = search_client_emails(gmail_service, client, max_results=5)
+        emails = search_client_emails(gmail_service, client, max_results=3)
         if emails:
             latest = max(emails, key=lambda e: e.get("date_ts", 0))
-            # Use Claude for sentiment analysis
-            sentiment_result = get_cached_sentiment(client, emails)
+            clients_with_emails[client] = emails
             client_email_data[client] = {
                 "last_date": latest.get("date"),
                 "last_date_ts": latest.get("date_ts"),
-                "sentiment": sentiment_result["rating"],
-                "sentiment_reason": sentiment_result["reason"],
+                "sentiment": "neutral",  # placeholder, updated after batch
+                "sentiment_reason": "",
                 "recent_emails": [{
                     "subject": e["subject"],
                     "from": e["from"],
@@ -632,6 +712,16 @@ def build_client_health_data(clickup_request_fn):
                 "sentiment_reason": "No recent emails",
                 "recent_emails": [],
             }
+
+    # 3b. Batch Claude sentiment analysis (one API call for all clients)
+    if clients_with_emails:
+        logger.info(f"Running batch Claude sentiment for {len(clients_with_emails)} clients...")
+        batch_results = batch_claude_sentiment(clients_with_emails)
+        for client_name, result in batch_results.items():
+            if client_name in client_email_data:
+                client_email_data[client_name]["sentiment"] = result["rating"]
+                client_email_data[client_name]["sentiment_reason"] = result["reason"]
+        logger.info("Batch Claude sentiment complete")
 
     # 4. Build per-client health data
     now_dt = datetime.now(timezone.utc)
