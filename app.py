@@ -1389,18 +1389,19 @@ def init_scheduler():
         replace_existing=True
     )
 
-    # Client health cache refresh every 30 minutes
-    from apscheduler.triggers.interval import IntervalTrigger
+    # Client health cache refresh daily at midnight EST
+    eastern = pytz.timezone('US/Eastern')
+    client_health_trigger = CronTrigger(hour=0, minute=0, timezone=eastern)
     scheduler.add_job(
         func=refresh_client_health_cache,
-        trigger=IntervalTrigger(minutes=30),
+        trigger=client_health_trigger,
         id='client_health_refresh',
-        name='Refresh client health cache every 30 minutes',
+        name='Refresh client health cache daily at 12am ET',
         replace_existing=True
     )
 
     scheduler.start()
-    logger.info("Scheduler started - daily cache at 2pm ET, client health every 30min")
+    logger.info("Scheduler started - agile cache at 2pm ET, client health at 12am ET")
 
     # Ensure scheduler shuts down cleanly
     atexit.register(lambda: scheduler.shutdown())

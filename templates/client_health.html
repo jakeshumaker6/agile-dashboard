@@ -353,12 +353,24 @@
             spinner.style.display = 'inline-block';
             document.getElementById('loadingOverlay').classList.remove('hidden');
 
-            // If force-refresh requested, kick off background rebuild first
+            // If force-refresh requested, show confirmation with ETA then kick off
             if (force) {
+                const confirmed = confirm(
+                    'Refresh Client Health Data?\n\n' +
+                    'This will pull fresh data from ClickUp, Grain, Gmail, and run AI sentiment analysis.\n\n' +
+                    'Estimated time: 15-20 minutes\n\n' +
+                    'The page will continue showing current data while the refresh runs in the background. ' +
+                    'Reload the page after ~15-20 minutes to see updated data.'
+                );
+                if (!confirmed) {
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    document.getElementById('loadingOverlay').classList.add('hidden');
+                    return;
+                }
                 try {
                     await fetch('/api/client-health/refresh', {method: 'POST'});
-                    // Wait a moment then poll for fresh data
-                    await new Promise(r => setTimeout(r, 3000));
+                    alert('Refresh started! Data will update in the background.\n\nReload this page in ~15-20 minutes to see fresh data.');
                 } catch (e) { console.warn('Refresh trigger failed', e); }
             }
 
