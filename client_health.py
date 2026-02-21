@@ -40,7 +40,10 @@ CLIENT_HEALTH_CACHE_TTL = 1800  # 30 minutes
 # ============================================================================
 
 def load_grain_api_key():
-    """Load Grain API key from .env.grain file."""
+    """Load Grain API key from env var or .env.grain file."""
+    key = os.environ.get("GRAIN_API_TOKEN") or os.environ.get("GRAIN_API_KEY")
+    if key:
+        return key.strip()
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env.grain")
     try:
         with open(env_path, 'r') as f:
@@ -260,14 +263,23 @@ def get_gmail_service():
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
 
-        sa_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                               ".env.google-service-account.json")
-
-        credentials = service_account.Credentials.from_service_account_file(
-            sa_path,
-            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-            subject="jake@pulsemarketing.co"
-        )
+        sa_json_str = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+        if sa_json_str:
+            import json as _json
+            sa_info = _json.loads(sa_json_str)
+            credentials = service_account.Credentials.from_service_account_info(
+                sa_info,
+                scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+                subject="jake@pulsemarketing.co"
+            )
+        else:
+            sa_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                   ".env.google-service-account.json")
+            credentials = service_account.Credentials.from_service_account_file(
+                sa_path,
+                scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+                subject="jake@pulsemarketing.co"
+            )
 
         return build("gmail", "v1", credentials=credentials, cache_discovery=False)
     except ImportError:
