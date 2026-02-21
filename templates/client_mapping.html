@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Mapping | Pulse</title>
+    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-dark: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --pulse-navy: #1E2A4A;
+            --pulse-navy-light: #2D3D5E;
+            --bg-dark: #0F1318;
+            --bg-card: #161B24;
+            --bg-card-hover: #1D242F;
+            --border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --success: #4ADE80;
+            --warning: #FBBF24;
+            --danger: #F87171;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark); color: var(--text); min-height: 100vh; padding: 24px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        /* Sidebar */
+        .sidebar { position: fixed; top: 0; left: -280px; width: 280px; height: 100vh; background: var(--pulse-navy); transition: left 0.3s ease; z-index: 999; padding: 24px 0; }
+        .sidebar.open { left: 0; }
+        .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 998; display: none; }
+        .sidebar-overlay.visible { display: block; }
+        .sidebar-brand { padding: 0 24px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-brand img { height: 36px; border-radius: 6px; }
+        .sidebar-brand span { font-size: 16px; font-weight: 600; color: #fff; }
+        .sidebar-item { padding: 12px 24px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px; font-size: 14px; transition: background 0.2s; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-item.active { background: var(--pulse-primary); color: white; }
+        .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
+
+        /* Loading */
+        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-dark); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.3s ease; }
+        .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+        .loading-overlay .logo-img { height: 80px; margin-bottom: 24px; }
+        .loading-text { font-size: 16px; color: var(--text-muted); margin-bottom: 24px; }
+        .loading-bar { width: 200px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+        .loading-bar-fill { height: 100%; background: var(--pulse-primary); animation: loading-pulse 1.5s ease-in-out infinite; }
+        @keyframes loading-pulse { 0%,100%{width:20%;margin-left:0} 50%{width:50%;margin-left:25%} }
+        .main-content { opacity: 0; transition: opacity 0.3s ease; }
+        .main-content.loaded { opacity: 1; }
+
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+        .logo-section { display: flex; align-items: center; gap: 16px; }
+        .logo-img { height: 48px; width: auto; border-radius: 8px; }
+        .brand-text { display: flex; flex-direction: column; }
+        .brand-name { font-size: 18px; font-weight: 600; color: #fff; }
+        .brand-subtitle { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+
+        .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--pulse-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        select, button, input[type="text"] {
+            background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+            padding: 10px 16px; border-radius: 8px; font-size: 14px; font-family: inherit;
+            cursor: pointer; transition: all 0.2s;
+        }
+        select:hover, button:hover { border-color: #444; background: var(--bg-card-hover); }
+        button.primary { background: var(--pulse-primary); border-color: var(--pulse-primary); color: white; }
+        button.primary:hover { background: var(--pulse-primary-dark); }
+        button.sm { padding: 6px 12px; font-size: 12px; }
+
+        .panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+        .panel-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+        td { font-size: 14px; }
+        tr:last-child td { border-bottom: none; }
+
+        input[type="text"] { cursor: text; width: 100%; }
+        input[type="text"]:focus { outline: none; border-color: var(--pulse-primary); }
+
+        .save-msg { font-size: 12px; color: var(--success); margin-left: 8px; opacity: 0; transition: opacity 0.3s; }
+        .save-msg.show { opacity: 1; }
+
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 100px; font-size: 12px; font-weight: 500; }
+        .status-ok { background: rgba(74,222,128,0.15); color: var(--success); }
+        .status-gap { background: rgba(248,113,113,0.15); color: var(--danger); }
+        .status-partial { background: rgba(251,191,36,0.15); color: var(--warning); }
+
+        .empty-state { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; }
+
+        footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 12px; }
+        footer a { color: var(--pulse-primary); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <img src="/static/logo.jpeg" alt="Pulse">
+            <span>Pulse</span>
+        </div>
+        <a href="/" class="sidebar-item">📊 Sprint Dashboard</a>
+        <a href="/client-health" class="sidebar-item">🏥 Client Health</a>
+        <a href="/client-mapping" class="sidebar-item active">🔗 Client Mapping</a>
+    </nav>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <img src="/static/logo.jpeg" alt="Pulse" class="logo-img">
+        <div class="loading-text">Loading client mapping data...</div>
+        <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    </div>
+
+    <div class="container main-content" id="mainContent">
+        <header>
+            <div class="logo-section">
+                <button class="hamburger" onclick="toggleSidebar()">☰</button>
+                <img src="/static/logo.jpeg" alt="Pulse" class="logo-img">
+                <div class="brand-text">
+                    <span class="brand-name">Client Mapping</span>
+                    <span class="brand-subtitle">Email & Call Matching</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Section A: Email Domain Matching -->
+        <div class="panel">
+            <div class="panel-title">📧 Email Domain Matching</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Email Domains</th>
+                        <th>Search Keywords</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="emailMappingTable">
+                    <tr><td colspan="4" class="empty-state"><span class="spinner"></span> Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Section B: Grain Call Matching -->
+        <div class="panel">
+            <div class="panel-title">🎙️ Grain Call Matching</div>
+            <div id="grainSection">
+                <h4 style="font-size:13px;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Unmatched Recordings</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Recording</th>
+                            <th>Date</th>
+                            <th>Assign to Client</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="unmatchedTable">
+                        <tr><td colspan="4" class="empty-state"><span class="spinner"></span> Loading...</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 style="font-size:13px;color:var(--text-muted);margin:24px 0 12px;text-transform:uppercase;letter-spacing:0.5px">Matched Recordings</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Recording</th>
+                            <th>Date</th>
+                            <th>Client</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="matchedTable">
+                        <tr><td colspan="4" class="empty-state"><span class="spinner"></span> Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Section C: Account Overview -->
+        <div class="panel">
+            <div class="panel-title">📋 Account Overview</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Account Manager</th>
+                        <th>Email Domains</th>
+                        <th>Matched Calls</th>
+                        <th>Coverage</th>
+                    </tr>
+                </thead>
+                <tbody id="overviewTable">
+                    <tr><td colspan="5" class="empty-state"><span class="spinner"></span> Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <footer>
+            <a href="https://pulsemarketing.co" target="_blank">Pulse Marketing</a> &bull;
+            Client Mapping &bull;
+            Data from ClickUp & Grain
+        </footer>
+    </div>
+
+    <script>
+        let mappingData = null;
+        let clientList = [];
+
+        document.addEventListener('DOMContentLoaded', loadData);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebarOverlay').classList.toggle('visible');
+        }
+        function closeSidebar() {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('visible');
+        }
+
+        async function loadData() {
+            try {
+                const resp = await fetch('/api/client-mapping');
+                mappingData = await resp.json();
+                clientList = mappingData.clients || [];
+                renderEmailMapping();
+                renderGrainSection();
+                renderOverview();
+            } catch (e) {
+                console.error('Error loading mapping data:', e);
+            } finally {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                document.getElementById('mainContent').classList.add('loaded');
+            }
+        }
+
+        function renderEmailMapping() {
+            const tbody = document.getElementById('emailMappingTable');
+            const emailDomains = mappingData.email_domains || {};
+
+            if (!clientList.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No clients found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = clientList.map(client => {
+                const entry = emailDomains[client] || {};
+                const domains = (entry.domains || []).join(', ');
+                const keywords = (entry.keywords || []).join(', ');
+                const safeId = client.replace(/[^a-zA-Z0-9]/g, '_');
+                return `<tr>
+                    <td><strong>${client}</strong></td>
+                    <td><input type="text" id="domains-${safeId}" value="${domains}" placeholder="e.g. example.com, other.org"></td>
+                    <td><input type="text" id="keywords-${safeId}" value="${keywords}" placeholder="e.g. Acme, ACME Inc"></td>
+                    <td>
+                        <button class="primary sm" onclick="saveEmailMapping('${client}', '${safeId}')">Save</button>
+                        <span class="save-msg" id="msg-${safeId}">✓ Saved</span>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function saveEmailMapping(client, safeId) {
+            const domainsVal = document.getElementById('domains-' + safeId).value;
+            const keywordsVal = document.getElementById('keywords-' + safeId).value;
+            const domains = domainsVal.split(',').map(s => s.trim()).filter(Boolean);
+            const keywords = keywordsVal.split(',').map(s => s.trim()).filter(Boolean);
+
+            try {
+                const resp = await fetch('/api/client-mapping/email', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({client, domains, keywords})
+                });
+                const result = await resp.json();
+                if (result.status === 'saved') {
+                    const msg = document.getElementById('msg-' + safeId);
+                    msg.classList.add('show');
+                    setTimeout(() => msg.classList.remove('show'), 2000);
+                }
+            } catch (e) {
+                alert('Error saving: ' + e.message);
+            }
+        }
+
+        function renderGrainSection() {
+            const unmatched = mappingData.unmatched_recordings || [];
+            const matched = mappingData.matched_recordings || [];
+            const grainMatches = mappingData.grain_matches || {};
+
+            // Unmatched
+            const unmatchedTbody = document.getElementById('unmatchedTable');
+            if (!unmatched.length) {
+                unmatchedTbody.innerHTML = '<tr><td colspan="4" class="empty-state">All recordings are matched! 🎉</td></tr>';
+            } else {
+                unmatchedTbody.innerHTML = unmatched.map(rec => {
+                    const recId = rec.id || rec.recording_id || '';
+                    const safeId = recId.replace(/[^a-zA-Z0-9]/g, '_');
+                    const title = rec.title || rec.name || 'Untitled';
+                    const date = rec.date ? new Date(rec.date).toLocaleDateString() : 'N/A';
+                    const options = clientList.map(c => `<option value="${c}">${c}</option>`).join('');
+                    return `<tr>
+                        <td>${title}</td>
+                        <td>${date}</td>
+                        <td><select id="grain-select-${safeId}"><option value="">-- Select --</option>${options}</select></td>
+                        <td><button class="primary sm" onclick="saveGrainMatch('${recId}', '${safeId}')">Assign</button></td>
+                    </tr>`;
+                }).join('');
+            }
+
+            // Matched
+            const matchedTbody = document.getElementById('matchedTable');
+            if (!matched.length) {
+                matchedTbody.innerHTML = '<tr><td colspan="4" class="empty-state">No matched recordings yet</td></tr>';
+            } else {
+                matchedTbody.innerHTML = matched.map(rec => {
+                    const recId = rec.id || rec.recording_id || '';
+                    const safeId = recId.replace(/[^a-zA-Z0-9]/g, '_');
+                    const title = rec.title || rec.name || 'Untitled';
+                    const date = rec.date ? new Date(rec.date).toLocaleDateString() : 'N/A';
+                    const client = rec.matched_client || grainMatches[recId] || 'Unknown';
+                    const options = clientList.map(c => `<option value="${c}" ${c === client ? 'selected' : ''}>${c}</option>`).join('');
+                    return `<tr>
+                        <td>${title}</td>
+                        <td>${date}</td>
+                        <td><select id="grain-select-${safeId}"><option value="">-- Select --</option>${options}</select></td>
+                        <td><button class="sm" onclick="saveGrainMatch('${recId}', '${safeId}')">Reassign</button></td>
+                    </tr>`;
+                }).join('');
+            }
+        }
+
+        async function saveGrainMatch(recordingId, safeId) {
+            const client = document.getElementById('grain-select-' + safeId).value;
+            if (!client) { alert('Please select a client'); return; }
+
+            try {
+                const resp = await fetch('/api/client-mapping/grain', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({recording_id: recordingId, client: client})
+                });
+                const result = await resp.json();
+                if (result.status === 'saved') {
+                    loadData(); // Refresh
+                }
+            } catch (e) {
+                alert('Error saving: ' + e.message);
+            }
+        }
+
+        function renderOverview() {
+            const overview = mappingData.overview || [];
+            const tbody = document.getElementById('overviewTable');
+
+            if (!overview.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No client data available</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = overview.map(item => {
+                const domains = (item.email_domains || []).join(', ') || '<span style="color:var(--text-muted)">Not configured</span>';
+                const hasDomains = item.email_domains && item.email_domains.length > 0;
+                const hasCalls = item.matched_calls > 0;
+                let coverageClass = 'status-gap';
+                let coverageText = 'Gaps';
+                if (hasDomains && hasCalls) { coverageClass = 'status-ok'; coverageText = 'Good'; }
+                else if (hasDomains || hasCalls) { coverageClass = 'status-partial'; coverageText = 'Partial'; }
+
+                return `<tr>
+                    <td><strong>${item.client}</strong></td>
+                    <td>${item.account_manager || '<span style="color:var(--text-muted)">—</span>'}</td>
+                    <td>${domains}</td>
+                    <td>${item.matched_calls || 0}</td>
+                    <td><span class="status-badge ${coverageClass}">${coverageText}</span></td>
+                </tr>`;
+            }).join('');
+        }
+    </script>
+</body>
+</html>

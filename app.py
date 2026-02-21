@@ -16,9 +16,10 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
-from client_health import build_client_health_data
+from client_health import build_client_health_data, fetch_grain_recordings, fetch_active_accounts, match_client_to_recording
 from client_health_cache import read_cache, write_cache, is_cache_empty
 from sentiment_overrides import load_overrides, save_override, delete_override, apply_overrides
+from client_mappings import load_mappings, save_email_mapping, save_grain_match
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -1223,6 +1224,149 @@ def api_sentiment_override_delete():
 def api_sentiment_overrides_list():
     """Get all current sentiment overrides."""
     return jsonify(load_overrides())
+
+
+# ============================================================================
+# Client Mapping Routes
+# ============================================================================
+
+@app.route("/client-mapping")
+@login_required
+def client_mapping():
+    """Serve the client mapping management page."""
+    return render_template("client_mapping.html")
+
+
+@app.route("/api/client-mapping")
+@login_required
+def api_client_mapping():
+    """Get all client mappings, unmatched recordings, and overview data."""
+    try:
+        mappings = load_mappings()
+        accounts_data = fetch_active_accounts(clickup_request)
+        clients = accounts_data["clients"]
+        managers = accounts_data["managers"]
+
+        # Fetch Grain recordings
+        recordings = fetch_grain_recordings()
+        grain_matches = mappings.get("grain_matches", {})
+
+        # Separate matched vs unmatched
+        unmatched = []
+        matched = []
+        for rec in recordings:
+            rec_id = rec.get("id") or rec.get("recording_id") or ""
+            title = rec.get("title") or rec.get("name") or "Untitled"
+            date = rec.get("date") or rec.get("created_at") or rec.get("start_time") or ""
+            rec_info = {"id": rec_id, "title": title, "date": date}
+
+            if rec_id in grain_matches:
+                rec_info["matched_client"] = grain_matches[rec_id]
+                matched.append(rec_info)
+            else:
+                # Check auto-match
+                auto = match_client_to_recording(rec, clients)
+                if auto:
+                    rec_info["matched_client"] = auto
+                    matched.append(rec_info)
+                else:
+                    unmatched.append(rec_info)
+
+        # Build overview
+        email_domains = mappings.get("email_domains", {})
+        # Count matched calls per client
+        call_counts = {}
+        for rec in matched:
+            c = rec.get("matched_client", "")
+            call_counts[c] = call_counts.get(c, 0) + 1
+
+        overview = []
+        for client in clients:
+            entry = email_domains.get(client, {})
+            overview.append({
+                "client": client,
+                "account_manager": managers.get(client, ""),
+                "email_domains": entry.get("domains", []),
+                "matched_calls": call_counts.get(client, 0),
+            })
+
+        return jsonify({
+            "clients": clients,
+            "email_domains": email_domains,
+            "grain_matches": grain_matches,
+            "unmatched_recordings": unmatched[:50],
+            "matched_recordings": matched[:50],
+            "overview": overview,
+        })
+    except Exception as e:
+        logger.error(f"Error in api_client_mapping: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/client-mapping/email", methods=["POST"])
+@login_required
+def api_client_mapping_email():
+    """Save email domain mapping for a client."""
+    try:
+        body = request.get_json()
+        client = body.get("client")
+        domains = body.get("domains", [])
+        keywords = body.get("keywords", [])
+        if not client:
+            return jsonify({"error": "client is required"}), 400
+        save_email_mapping(client, domains, keywords)
+        return jsonify({"status": "saved"})
+    except Exception as e:
+        logger.error(f"Error saving email mapping: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/client-mapping/grain", methods=["POST"])
+@login_required
+def api_client_mapping_grain():
+    """Save Grain recording -> client match."""
+    try:
+        body = request.get_json()
+        recording_id = body.get("recording_id")
+        client = body.get("client")
+        if not recording_id or not client:
+            return jsonify({"error": "recording_id and client are required"}), 400
+        save_grain_match(recording_id, client)
+        return jsonify({"status": "saved"})
+    except Exception as e:
+        logger.error(f"Error saving grain match: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/client-mapping/unmatched-recordings")
+@login_required
+def api_unmatched_recordings():
+    """Get Grain recordings not yet matched to a client."""
+    try:
+        mappings = load_mappings()
+        accounts_data = fetch_active_accounts(clickup_request)
+        clients = accounts_data["clients"]
+        recordings = fetch_grain_recordings()
+        grain_matches = mappings.get("grain_matches", {})
+
+        unmatched = []
+        for rec in recordings:
+            rec_id = rec.get("id") or rec.get("recording_id") or ""
+            if rec_id in grain_matches:
+                continue
+            auto = match_client_to_recording(rec, clients)
+            if auto:
+                continue
+            unmatched.append({
+                "id": rec_id,
+                "title": rec.get("title") or rec.get("name") or "Untitled",
+                "date": rec.get("date") or rec.get("created_at") or "",
+            })
+
+        return jsonify({"unmatched": unmatched[:50]})
+    except Exception as e:
+        logger.error(f"Error fetching unmatched recordings: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ============================================================================

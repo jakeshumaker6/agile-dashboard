@@ -112,9 +112,21 @@ def fetch_grain_recordings():
 
 
 def match_client_to_recording(recording, client_names):
-    """Match a recording to a client by scanning title AND intelligence_notes_md.
+    """Match a recording to a client.
+    First checks manual grain_matches in client_mappings.json,
+    then falls back to scanning title AND intelligence_notes_md.
     Returns client name or None.
     """
+    from client_mappings import load_mappings
+
+    # Check manual match first
+    rec_id = recording.get("id") or recording.get("recording_id") or ""
+    if rec_id:
+        mappings = load_mappings()
+        manual_match = mappings.get("grain_matches", {}).get(rec_id)
+        if manual_match:
+            return manual_match
+
     title = (recording.get("title") or recording.get("name") or "").lower()
     notes = (recording.get("intelligence_notes_md") or "").lower()
     searchable = title + " " + notes
@@ -687,8 +699,21 @@ def build_client_health_data(clickup_request_fn):
     client_email_data = {}
     clients_with_emails = {}  # {client_name: [emails]} for Claude batch
 
+    # Load client mappings for domain-based email search
+    from client_mappings import load_mappings as _load_client_mappings
+    _client_mappings = _load_client_mappings()
+    _email_domain_config = _client_mappings.get("email_domains", {})
+
     for client in active_clients:
-        emails = search_client_emails(gmail_service, client, max_results=3)
+        # Use domain-based search if configured, otherwise fall back to client name
+        domain_entry = _email_domain_config.get(client, {})
+        configured_domains = domain_entry.get("domains", [])
+        if configured_domains:
+            # Build Gmail query: from:domain1.com OR from:domain2.com
+            domain_query = " OR ".join(f"from:{d}" for d in configured_domains)
+            emails = search_client_emails(gmail_service, domain_query, max_results=3)
+        else:
+            emails = search_client_emails(gmail_service, client, max_results=3)
         if emails:
             latest = max(emails, key=lambda e: e.get("date_ts", 0))
             clients_with_emails[client] = emails
