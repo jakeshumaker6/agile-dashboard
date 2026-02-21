@@ -295,12 +295,15 @@
             }
         }
 
+        let matchedPage = 0;
+        const MATCHED_PAGE_SIZE = 5;
+
         function renderGrainSection() {
             const unmatched = mappingData.unmatched_recordings || [];
             const matched = mappingData.matched_recordings || [];
             const grainMatches = mappingData.grain_matches || {};
 
-            // Unmatched
+            // Unmatched — show with Hide button
             const unmatchedTbody = document.getElementById('unmatchedTable');
             if (!unmatched.length) {
                 unmatchedTbody.innerHTML = '<tr><td colspan="4" class="empty-state">All recordings are matched! 🎉</td></tr>';
@@ -310,35 +313,76 @@
                     const safeId = recId.replace(/[^a-zA-Z0-9]/g, '_');
                     const title = rec.title || rec.name || 'Untitled';
                     const date = rec.date ? new Date(rec.date).toLocaleDateString() : 'N/A';
+                    const url = rec.url || rec.public_url || '';
+                    const titleHtml = url ? `<a href="${url}" target="_blank" style="color:var(--text);text-decoration:none;border-bottom:1px dotted var(--text-muted)">${title}</a>` : title;
                     const options = clientList.map(c => `<option value="${c}">${c}</option>`).join('');
-                    return `<tr>
-                        <td>${title}</td>
+                    return `<tr id="row-${safeId}">
+                        <td>${titleHtml}</td>
                         <td>${date}</td>
                         <td><select id="grain-select-${safeId}"><option value="">-- Select --</option>${options}</select></td>
-                        <td><button class="primary sm" onclick="saveGrainMatch('${recId}', '${safeId}')">Assign</button></td>
+                        <td style="display:flex;gap:4px">
+                            <button class="primary sm" onclick="saveGrainMatch('${recId}', '${safeId}')">Assign</button>
+                            <button class="sm" onclick="hideRecording('${recId}', '${safeId}')" style="background:transparent;color:var(--text-muted);border:1px solid var(--border)">Hide</button>
+                        </td>
                     </tr>`;
                 }).join('');
             }
 
-            // Matched
+            // Matched — paginated, 5 at a time, most recent first
+            renderMatchedPage(matched, grainMatches);
+        }
+
+        function renderMatchedPage(matched, grainMatches) {
             const matchedTbody = document.getElementById('matchedTable');
-            if (!matched.length) {
+            const sorted = [...matched].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            const total = sorted.length;
+            const start = matchedPage * MATCHED_PAGE_SIZE;
+            const page = sorted.slice(start, start + MATCHED_PAGE_SIZE);
+
+            if (!total) {
                 matchedTbody.innerHTML = '<tr><td colspan="4" class="empty-state">No matched recordings yet</td></tr>';
             } else {
-                matchedTbody.innerHTML = matched.map(rec => {
+                matchedTbody.innerHTML = page.map(rec => {
                     const recId = rec.id || rec.recording_id || '';
                     const safeId = recId.replace(/[^a-zA-Z0-9]/g, '_');
                     const title = rec.title || rec.name || 'Untitled';
                     const date = rec.date ? new Date(rec.date).toLocaleDateString() : 'N/A';
+                    const url = rec.url || rec.public_url || '';
+                    const titleHtml = url ? `<a href="${url}" target="_blank" style="color:var(--text);text-decoration:none;border-bottom:1px dotted var(--text-muted)">${title}</a>` : title;
                     const client = rec.matched_client || grainMatches[recId] || 'Unknown';
                     const options = clientList.map(c => `<option value="${c}" ${c === client ? 'selected' : ''}>${c}</option>`).join('');
                     return `<tr>
-                        <td>${title}</td>
+                        <td>${titleHtml}</td>
                         <td>${date}</td>
                         <td><select id="grain-select-${safeId}"><option value="">-- Select --</option>${options}</select></td>
                         <td><button class="sm" onclick="saveGrainMatch('${recId}', '${safeId}')">Reassign</button></td>
                     </tr>`;
                 }).join('');
+
+                // Pagination controls
+                const hasMore = start + MATCHED_PAGE_SIZE < total;
+                const hasPrev = matchedPage > 0;
+                matchedTbody.innerHTML += `<tr><td colspan="4" style="text-align:center;padding:12px">
+                    <span style="color:var(--text-muted);font-size:12px">Showing ${start+1}-${Math.min(start+MATCHED_PAGE_SIZE, total)} of ${total}</span>
+                    <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">
+                        ${hasPrev ? `<button class="sm" onclick="matchedPage--;renderMatchedPage(mappingData.matched_recordings||[], mappingData.grain_matches||{})">← Previous</button>` : ''}
+                        ${hasMore ? `<button class="sm" onclick="matchedPage++;renderMatchedPage(mappingData.matched_recordings||[], mappingData.grain_matches||{})">Next →</button>` : ''}
+                    </div>
+                </td></tr>`;
+            }
+        }
+
+        async function hideRecording(recordingId, safeId) {
+            try {
+                await fetch('/api/client-mapping/grain', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({recording_id: recordingId, client: '_hidden'})
+                });
+                const row = document.getElementById('row-' + safeId);
+                if (row) row.style.display = 'none';
+            } catch (e) {
+                alert('Error hiding recording: ' + e.message);
             }
         }
 

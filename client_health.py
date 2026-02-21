@@ -219,6 +219,8 @@ def match_client_to_recording(recording, client_names):
         mappings = load_mappings()
         manual_match = mappings.get("grain_matches", {}).get(rec_id)
         if manual_match:
+            if manual_match == "_hidden":
+                return None  # User explicitly hid this recording
             return manual_match
 
     title = (recording.get("title") or recording.get("name") or "").lower()
