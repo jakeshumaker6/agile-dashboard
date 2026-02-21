@@ -296,7 +296,7 @@
                     <option value="green">🟢 Green</option>
                 </select>
                 <select id="sortBy" onchange="applyFilters()">
-                    <option value="health">Sort: Health (worst first)</option>
+                    <option value="health">Sort: Health</option>
                     <option value="name">Sort: Alphabetical</option>
                     <option value="touch">Sort: Last Touchpoint</option>
                 </select>
@@ -425,7 +425,11 @@
 
             const statusOrder = {red: 0, yellow: 1, green: 2};
             if (sortBy === 'health') {
-                filtered.sort((a, b) => (statusOrder[a.health.status] || 3) - (statusOrder[b.health.status] || 3) || a.name.localeCompare(b.name));
+                filtered.sort((a, b) => {
+                    const ao = statusOrder[a.health.status] ?? 3;
+                    const bo = statusOrder[b.health.status] ?? 3;
+                    return ao - bo || a.name.localeCompare(b.name);
+                });
             } else if (sortBy === 'name') {
                 filtered.sort((a, b) => a.name.localeCompare(b.name));
             } else if (sortBy === 'touch') {
