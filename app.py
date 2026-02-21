@@ -1267,9 +1267,11 @@ def init_scheduler():
 # Initialize scheduler when module loads (for production via gunicorn)
 # Only start if not in debug reload mode
 if os.environ.get('WERKZEUG_RUN_MAIN') != 'true' or not app.debug:
-    # Check if cache exists, if not do initial load
+    # Check if cache exists, if not do initial background build
     if not os.path.exists(DAILY_CACHE_FILE):
-        logger.info("No daily cache found - will refresh on first request or at 2pm ET")
+        import threading
+        logger.info("No daily cache found — building in background on startup")
+        threading.Thread(target=refresh_daily_cache, daemon=True).start()
 
     _scheduler = init_scheduler()
 
