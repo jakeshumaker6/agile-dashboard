@@ -353,15 +353,9 @@
             spinner.style.display = 'inline-block';
             document.getElementById('loadingOverlay').classList.remove('hidden');
 
-            // If force-refresh requested, show confirmation with ETA then kick off
+            // If force-refresh requested, show in-app confirmation modal
             if (force) {
-                const confirmed = confirm(
-                    'Refresh Client Health Data?\n\n' +
-                    'This will pull fresh data from ClickUp, Grain, Gmail, and run AI sentiment analysis.\n\n' +
-                    'Estimated time: 15-20 minutes\n\n' +
-                    'The page will continue showing current data while the refresh runs in the background. ' +
-                    'Reload the page after ~15-20 minutes to see updated data.'
-                );
+                const confirmed = await showRefreshModal();
                 if (!confirmed) {
                     btn.disabled = false;
                     spinner.style.display = 'none';
@@ -370,7 +364,7 @@
                 }
                 try {
                     await fetch('/api/client-health/refresh', {method: 'POST'});
-                    alert('Refresh started! Data will update in the background.\n\nReload this page in ~15-20 minutes to see fresh data.');
+                    showToast('Refresh started! Data will update in the background. Reload in ~15-20 minutes.');
                 } catch (e) { console.warn('Refresh trigger failed', e); }
             }
 
@@ -614,7 +608,54 @@
             document.body.style.overflow = '';
         }
 
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeSidebar(); } });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeSidebar(); closeRefreshModal(); } });
+
+        // In-app refresh confirmation modal
+        function showRefreshModal() {
+            return new Promise(resolve => {
+                const overlay = document.createElement('div');
+                overlay.id = 'refreshModalOverlay';
+                overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s';
+                overlay.innerHTML = `
+                    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+                        <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:16px">Refresh Client Health Data</div>
+                        <div style="font-size:14px;color:var(--text-muted);line-height:1.6;margin-bottom:8px">
+                            This will pull fresh data from ClickUp, Grain, Gmail, and run AI sentiment analysis.
+                        </div>
+                        <div style="font-size:13px;color:var(--warning);margin-bottom:20px">
+                            ⏱ Estimated time: 15-20 minutes
+                        </div>
+                        <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px">
+                            Current data will remain visible while the refresh runs in the background.
+                        </div>
+                        <div style="display:flex;gap:10px;justify-content:flex-end">
+                            <button id="refreshCancel" style="padding:8px 18px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:13px;cursor:pointer;font-family:Inter,sans-serif">Cancel</button>
+                            <button id="refreshConfirm" style="padding:8px 18px;border-radius:6px;border:none;background:var(--pulse-primary);color:white;font-size:13px;font-weight:500;cursor:pointer;font-family:Inter,sans-serif">Start Refresh</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(overlay);
+                requestAnimationFrame(() => overlay.style.opacity = '1');
+
+                document.getElementById('refreshConfirm').onclick = () => { overlay.remove(); resolve(true); };
+                document.getElementById('refreshCancel').onclick = () => { overlay.remove(); resolve(false); };
+                overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } };
+            });
+        }
+
+        function closeRefreshModal() {
+            const el = document.getElementById('refreshModalOverlay');
+            if (el) el.remove();
+        }
+
+        // Toast notification
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px 24px;color:var(--text);font-size:14px;z-index:3000;box-shadow:0 8px 32px rgba(0,0,0,0.3);max-width:500px;text-align:center;opacity:0;transition:opacity 0.3s';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            requestAnimationFrame(() => toast.style.opacity = '1');
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 6000);
+        }
 
         function saveSentimentOverride(clientName, safeId) {
             const rating = document.getElementById('override-rating-' + safeId).value;
@@ -625,12 +666,12 @@
                 body: JSON.stringify({client: clientName, rating: rating, reason: reason, overridden_by: 'User'})
             }).then(r => r.json()).then(d => {
                 if (d.status === 'saved') {
-                    alert('Sentiment override saved for ' + clientName);
+                    showToast('Sentiment override saved for ' + clientName);
                     location.reload();
                 } else {
-                    alert('Error: ' + (d.error || 'Unknown error'));
+                    showToast('Error: ' + (d.error || 'Unknown error'));
                 }
-            }).catch(e => alert('Error: ' + e.message));
+            }).catch(e => showToast('Error: ' + e.message));
         }
 
         function removeSentimentOverride(clientName) {
@@ -638,12 +679,12 @@
                 method: 'DELETE'
             }).then(r => r.json()).then(d => {
                 if (d.status === 'deleted') {
-                    alert('Override removed for ' + clientName + '. AI sentiment restored.');
+                    showToast('Override removed for ' + clientName + '. AI sentiment restored.');
                     location.reload();
                 } else {
-                    alert('Error: ' + (d.error || 'Unknown error'));
+                    showToast('Error: ' + (d.error || 'Unknown error'));
                 }
-            }).catch(e => alert('Error: ' + e.message));
+            }).catch(e => showToast('Error: ' + e.message));
         }
     </script>
 </body>
