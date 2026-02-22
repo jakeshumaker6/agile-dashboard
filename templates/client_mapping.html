@@ -361,10 +361,10 @@
                         <td>${titleHtml}</td>
                         <td style="white-space:nowrap">${dateStr}</td>
                         <td><select id="grain-select-${safeId}"><option value="">-- Select --</option>${options}</select></td>
-                        <td style="display:flex;gap:4px">
+                        <td><div style="display:flex;gap:4px;align-items:center">
                             <button class="sm" data-recid="${recId}" data-safeid="${safeId}" onclick="saveGrainMatch(this.dataset.recid, this.dataset.safeid)">Reassign</button>
                             <button class="sm" data-recid="${recId}" data-safeid="${safeId}" onclick="hideRecording(this.dataset.recid, this.dataset.safeid)" style="background:transparent;color:var(--text-muted);border:1px solid var(--border)">Hide</button>
-                        </td>
+                        </div></td>
                     </tr>`;
                 }).join('');
 
