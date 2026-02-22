@@ -163,19 +163,52 @@ def fetch_grain_recordings():
                 enriched += 1
 
     # Filter to external calls only
+    # Known internal call title patterns to always exclude
+    INTERNAL_PATTERNS = [
+        "standup", "stand-up", "stand up", "daily sync", "team sync",
+        "check-in", "check in", "checkin", "internal", "1:1", "1-on-1",
+        "one on one", "quickbooks", "quick books", "pulse team",
+        "sprint planning", "sprint review", "retro", "retrospective",
+        "all hands", "all-hands", "team meeting",
+    ]
+
     external_recordings = []
     for rec in all_recordings:
+        title = (rec.get("title") or rec.get("name") or "").lower()
+
+        # Skip obviously internal calls by title
+        if any(pat in title for pat in INTERNAL_PATTERNS):
+            # Check if title also mentions a known Pulse team member pair (e.g. "Sam/Jake check-in")
+            pulse_names_in_title = sum(1 for name in PULSE_TEAM_NAMES if name in title)
+            if pulse_names_in_title >= 1 and not any(
+                kw in title for kw in _get_client_keywords()
+            ):
+                logger.debug(f"Skipping internal call by title: {title}")
+                continue
+
         ext = is_external_call(rec)
         if ext is True:
             external_recordings.append(rec)
         elif ext is None:
-            # Unknown — include but mark as unverified
-            rec["_external_unverified"] = True
-            external_recordings.append(rec)
+            # Unknown — exclude by default to avoid internal call noise
+            logger.debug(f"Excluding unknown call (no external signal): {title}")
         # ext is False = internal only, skip
 
     logger.info(f"After external filter: {len(external_recordings)} external calls (from {len(all_recordings)} total)")
     return external_recordings
+
+
+def _get_client_keywords():
+    """Get all client keywords from mappings for matching."""
+    try:
+        from client_mappings import load_mappings
+        mappings = load_mappings()
+        keywords = []
+        for client_data in mappings.get("email_domains", {}).values():
+            keywords.extend(kw.lower() for kw in client_data.get("keywords", []) if len(kw) > 2)
+        return keywords
+    except Exception:
+        return []
 
 
 def _fetch_speakers_from_transcript_txt(transcript_url):

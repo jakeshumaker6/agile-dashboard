@@ -1258,7 +1258,8 @@ def api_client_mapping():
             rec_id = rec.get("id") or rec.get("recording_id") or ""
             title = rec.get("title") or rec.get("name") or "Untitled"
             date = rec.get("date") or rec.get("created_at") or rec.get("start_time") or ""
-            rec_info = {"id": rec_id, "title": title, "date": date}
+            url = rec.get("url") or rec.get("public_url") or ""
+            rec_info = {"id": rec_id, "title": title, "date": date, "url": url}
 
             if rec_id in grain_matches:
                 rec_info["matched_client"] = grain_matches[rec_id]
