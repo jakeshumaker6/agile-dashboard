@@ -1291,6 +1291,24 @@ def api_sentiment_overrides_list():
 # Client Mapping Routes
 # ============================================================================
 
+_grain_cache = {"data": None, "ts": 0}
+
+def _get_cached_grain_recordings(ttl=600):
+    """Return Grain recordings with a 10-min in-memory cache."""
+    import time
+    now = time.time()
+    if _grain_cache["data"] is not None and (now - _grain_cache["ts"]) < ttl:
+        return _grain_cache["data"]
+    try:
+        recs = fetch_grain_recordings()
+        _grain_cache["data"] = recs
+        _grain_cache["ts"] = now
+        return recs
+    except Exception as e:
+        logger.error(f"Grain fetch failed: {e}")
+        return _grain_cache["data"] or []
+
+
 @app.route("/client-mapping")
 @login_required
 def client_mapping():
@@ -1308,8 +1326,8 @@ def api_client_mapping():
         clients = accounts_data["clients"]
         managers = accounts_data["managers"]
 
-        # Fetch Grain recordings
-        recordings = fetch_grain_recordings()
+        # Fetch Grain recordings (cached for 10 min to avoid repeated slow API calls)
+        recordings = _get_cached_grain_recordings()
         grain_matches = mappings.get("grain_matches", {})
 
         # Separate matched vs unmatched
@@ -1318,7 +1336,7 @@ def api_client_mapping():
         for rec in recordings:
             rec_id = rec.get("id") or rec.get("recording_id") or ""
             title = rec.get("title") or rec.get("name") or "Untitled"
-            date = rec.get("date") or rec.get("created_at") or rec.get("start_time") or ""
+            date = rec.get("start_datetime") or rec.get("date") or rec.get("created_at") or rec.get("start_time") or ""
             url = rec.get("url") or rec.get("public_url") or ""
             rec_info = {"id": rec_id, "title": title, "date": date, "url": url}
 
@@ -1422,7 +1440,7 @@ def api_unmatched_recordings():
             unmatched.append({
                 "id": rec_id,
                 "title": rec.get("title") or rec.get("name") or "Untitled",
-                "date": rec.get("date") or rec.get("created_at") or "",
+                "date": rec.get("start_datetime") or rec.get("date") or rec.get("created_at") or "",
             })
 
         return jsonify({"unmatched": unmatched[:50]})

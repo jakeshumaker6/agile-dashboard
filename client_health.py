@@ -1041,7 +1041,7 @@ def build_client_health_data(clickup_request_fn):
     for rec in recordings:
         matched = match_client_to_recording(rec, active_clients)
         if matched:
-            rec_date_str = rec.get("date") or rec.get("created_at") or rec.get("start_time") or rec.get("timestamp")
+            rec_date_str = rec.get("start_datetime") or rec.get("date") or rec.get("created_at") or rec.get("start_time") or rec.get("timestamp")
             if rec_date_str:
                 try:
                     # Handle various date formats
