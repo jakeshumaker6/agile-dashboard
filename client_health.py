@@ -417,7 +417,11 @@ def get_gmail_service(subject="jake@pulsemarketing.co"):
         sa_json_str = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
         if sa_json_str:
             import json as _json
-            sa_info = _json.loads(sa_json_str)
+            try:
+                sa_info = _json.loads(sa_json_str)
+            except _json.JSONDecodeError:
+                # Render converts \n to real newlines — escape them back
+                sa_info = _json.loads(sa_json_str.replace("\n", "\\n").replace("\r", ""))
             credentials = service_account.Credentials.from_service_account_info(
                 sa_info,
                 scopes=["https://www.googleapis.com/auth/gmail.readonly"],

@@ -977,8 +977,14 @@ def health_integrations():
     if sa_json:
         try:
             sa_email = json.loads(sa_json).get("client_email")
-        except Exception as e:
-            sa_parse_error = str(e)
+        except json.JSONDecodeError:
+            try:
+                # Render may inject real newlines — escape them back
+                fixed = sa_json.replace("\n", "\\n").replace("\r", "")
+                sa_email = json.loads(fixed).get("client_email")
+                sa_parse_error = "fixed_with_newline_escape"
+            except Exception as e:
+                sa_parse_error = str(e)
     checks["google_service_account"] = {
         "env_var_set": bool(sa_json),
         "env_var_length": len(sa_json) if sa_json else 0,
