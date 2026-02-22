@@ -1473,17 +1473,17 @@ def init_scheduler():
 
     # Client health cache refresh daily at midnight EST
     eastern = pytz.timezone('US/Eastern')
-    client_health_trigger = CronTrigger(hour=0, minute=0, timezone=eastern)
+    client_health_trigger = CronTrigger(hour=14, minute=0, timezone=eastern)
     scheduler.add_job(
         func=refresh_client_health_cache,
         trigger=client_health_trigger,
         id='client_health_refresh',
-        name='Refresh client health cache daily at 12am ET',
+        name='Refresh client health cache daily at 2pm ET',
         replace_existing=True
     )
 
     scheduler.start()
-    logger.info("Scheduler started - agile cache at 2pm ET, client health at 12am ET")
+    logger.info("Scheduler started - agile cache at 2pm ET, client health at 2pm ET")
 
     # Ensure scheduler shuts down cleanly
     atexit.register(lambda: scheduler.shutdown())
