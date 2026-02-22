@@ -949,6 +949,52 @@ def health():
     return jsonify(result)
 
 
+@app.route("/health/integrations")
+@login_required
+def health_integrations():
+    """Check which integrations are configured and working."""
+    import os
+    checks = {}
+
+    # Grain
+    grain_token = os.environ.get("GRAIN_API_TOKEN") or os.environ.get("GRAIN_API_KEY")
+    if not grain_token:
+        try:
+            from client_health import load_grain_api_key
+            grain_token = load_grain_api_key()
+        except Exception:
+            pass
+    checks["grain"] = {
+        "configured": bool(grain_token),
+        "token_prefix": grain_token[:15] + "..." if grain_token else None,
+    }
+
+    # Google Service Account
+    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    sa_file = os.path.exists(os.path.join(os.path.dirname(__file__), ".env.google-service-account.json"))
+    checks["google_service_account"] = {
+        "env_var_set": bool(sa_json),
+        "file_exists": sa_file,
+        "client_email": json.loads(sa_json).get("client_email") if sa_json else None,
+    }
+
+    # Anthropic
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    checks["anthropic"] = {
+        "configured": bool(anthropic_key),
+        "key_prefix": anthropic_key[:10] + "..." if anthropic_key else None,
+    }
+
+    # ClickUp
+    checks["clickup"] = {
+        "configured": bool(CLICKUP_API_TOKEN),
+        "token_prefix": CLICKUP_API_TOKEN[:10] + "..." if CLICKUP_API_TOKEN else None,
+    }
+
+    return jsonify({"integrations": checks})
+
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     """Login page."""

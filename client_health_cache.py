@@ -40,6 +40,13 @@ def init_db():
             updated_at  TEXT    NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS client_mappings (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            data_json   TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL
+        )
+    """)
     conn.commit()
 
 
