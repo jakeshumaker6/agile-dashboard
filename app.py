@@ -972,10 +972,19 @@ def health_integrations():
     # Google Service Account
     sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
     sa_file = os.path.exists(os.path.join(os.path.dirname(__file__), ".env.google-service-account.json"))
+    sa_email = None
+    sa_parse_error = None
+    if sa_json:
+        try:
+            sa_email = json.loads(sa_json).get("client_email")
+        except Exception as e:
+            sa_parse_error = str(e)
     checks["google_service_account"] = {
         "env_var_set": bool(sa_json),
+        "env_var_length": len(sa_json) if sa_json else 0,
         "file_exists": sa_file,
-        "client_email": json.loads(sa_json).get("client_email") if sa_json else None,
+        "client_email": sa_email,
+        "parse_error": sa_parse_error,
     }
 
     # Anthropic
