@@ -1341,6 +1341,8 @@ def api_client_mapping():
             rec_info = {"id": rec_id, "title": title, "date": date, "url": url}
 
             if rec_id in grain_matches:
+                if grain_matches[rec_id] == "_hidden":
+                    continue  # Skip hidden recordings entirely
                 rec_info["matched_client"] = grain_matches[rec_id]
                 matched.append(rec_info)
             else:

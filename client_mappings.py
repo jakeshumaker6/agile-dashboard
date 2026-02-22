@@ -88,19 +88,59 @@ def load_mappings():
 
 
 def save_mappings(data):
-    """Save client mappings to SQLite (primary) and JSON file (backup)."""
+    """Save client mappings to SQLite (primary), JSON file, and optionally push to git."""
     ok = _write_db(data)
 
-    # Also write to JSON as backup (may fail on ephemeral FS, that's fine)
+    # Also write to JSON file
     try:
         with open(MAPPINGS_FILE, 'w') as f:
             json.dump(data, f, indent=2)
     except Exception:
         pass
 
+    # Push to git so mappings survive Render deploys
+    _push_mappings_to_git()
+
     if ok:
-        logger.info("Client mappings saved to SQLite")
+        logger.info("Client mappings saved to SQLite + git")
     return ok
+
+
+def _push_mappings_to_git():
+    """Commit and push client_mappings.json to git (best effort)."""
+    import subprocess
+    try:
+        repo_dir = os.path.dirname(MAPPINGS_FILE)
+        env = os.environ.copy()
+        # Use GitHub PAT if available
+        pat = os.environ.get("GITHUB_PAT", "")
+
+        # Configure git identity
+        subprocess.run(["git", "config", "user.email", "bot@pulsemarketing.co"],
+                       cwd=repo_dir, capture_output=True, timeout=5)
+        subprocess.run(["git", "config", "user.name", "Pulse Bot"],
+                       cwd=repo_dir, capture_output=True, timeout=5)
+
+        subprocess.run(["git", "add", "client_mappings.json"],
+                       cwd=repo_dir, capture_output=True, timeout=10)
+        result = subprocess.run(
+            ["git", "commit", "-m", "Auto-save client mappings"],
+            cwd=repo_dir, capture_output=True, timeout=10, text=True
+        )
+        if result.returncode == 0:
+            # Use PAT in remote URL for auth
+            if pat:
+                push_url = f"https://{pat}@github.com/jakeshumaker6/agile-dashboard.git"
+                subprocess.run(["git", "push", push_url, "HEAD:main"],
+                               cwd=repo_dir, capture_output=True, timeout=30)
+            else:
+                subprocess.run(["git", "push"],
+                               cwd=repo_dir, capture_output=True, timeout=30)
+            logger.info("Client mappings pushed to git")
+        else:
+            logger.debug("No mapping changes to commit")
+    except Exception as e:
+        logger.debug(f"Git push failed (non-critical): {e}")
 
 
 def save_email_mapping(client, domains, keywords):

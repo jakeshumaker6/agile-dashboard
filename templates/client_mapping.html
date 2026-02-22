@@ -357,7 +357,7 @@
                     const dateStr = date ? new Date(date).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : 'N/A';
                     const client = rec.matched_client || grainMatches[recId] || 'Unknown';
                     const options = clientList.map(c => `<option value="${c}" ${c === client ? 'selected' : ''}>${c}</option>`).join('');
-                    return `<tr>
+                    return `<tr id="row-${safeId}">
                         <td>${titleHtml}</td>
                         <td style="white-space:nowrap">${dateStr}</td>
                         <td><select id="grain-select-${safeId}"><option value="">-- Select --</option>${options}</select></td>
@@ -383,13 +383,22 @@
 
         async function hideRecording(recordingId, safeId) {
             try {
-                await fetch('/api/client-mapping/grain', {
+                const resp = await fetch('/api/client-mapping/grain', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({recording_id: recordingId, client: '_hidden'})
                 });
-                const row = document.getElementById('row-' + safeId);
-                if (row) row.style.display = 'none';
+                const result = await resp.json();
+                if (result.status === 'saved') {
+                    const row = document.getElementById('row-' + safeId);
+                    if (row) {
+                        row.style.opacity = '0.3';
+                        row.style.transition = 'opacity 0.3s';
+                        setTimeout(() => loadData(), 500);
+                    } else {
+                        loadData();
+                    }
+                }
             } catch (e) {
                 alert('Error hiding recording: ' + e.message);
             }
