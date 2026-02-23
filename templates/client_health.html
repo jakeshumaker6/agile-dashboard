@@ -512,16 +512,12 @@
 
             // Overview section
             const dst = c.communication.days_since_touchpoint;
-            const dse = c.communication.days_since_email;
-            const dsc = c.communication.days_since_call;
             html += `<div class="modal-section">
                 <div class="modal-section-title">Overview</div>
                 <div class="detail-grid">
                     <div class="detail-item"><div class="label">Health</div><div class="value"><span class="health-badge ${c.health.status}"><span class="health-dot ${c.health.status}"></span>${c.health.status.toUpperCase()}</span></div></div>
                     ${c.account_manager ? `<div class="detail-item"><div class="label">Account Manager</div><div class="value" style="font-size:14px">${c.account_manager}</div></div>` : ''}
                     <div class="detail-item"><div class="label">Last Touchpoint</div><div class="value">${dst != null ? dst + ' days' : 'N/A'}</div></div>
-                    <div class="detail-item"><div class="label">Last Email</div><div class="value" style="font-size:14px">${dse != null ? dse + ' days' : 'N/A'}</div></div>
-                    <div class="detail-item"><div class="label">Last Call</div><div class="value" style="font-size:14px">${dsc != null ? dsc + ' days' : 'N/A'}</div></div>
                     <div class="detail-item"><div class="label">Open Tasks</div><div class="value">${c.tasks.open}</div></div>
                     <div class="detail-item"><div class="label">Overdue</div><div class="value" style="color:${c.tasks.overdue > 0 ? 'var(--danger)' : 'var(--text)'}">${c.tasks.overdue}</div></div>
                     <div class="detail-item"><div class="label">Completion Rate</div><div class="value">${c.tasks.completion_rate}%</div></div>
