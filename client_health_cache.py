@@ -12,6 +12,7 @@ import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def init_db():
     conn.commit()
 
 
-def read_cache() -> dict | None:
+def read_cache() -> Optional[dict]:
     """Return the cached health payload, or None if empty."""
     try:
         conn = _get_conn()
