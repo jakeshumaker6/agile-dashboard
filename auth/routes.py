@@ -508,10 +508,11 @@ def api_resend_invite(user_id):
     """Resend invite email to a user who hasn't set up their password."""
     from auth.user_sync import resend_invite
 
-    if resend_invite(user_id):
+    result = resend_invite(user_id)
+    if result.get('success'):
         return jsonify({'message': 'Invite email sent'})
     else:
-        return jsonify({'error': 'Failed to send invite email'}), 500
+        return jsonify({'error': result.get('error', 'Failed to send invite email')}), 500
 
 
 # Note: /api/admin/sync-users is defined in app.py (needs access to get_pulse_team_members)

@@ -152,7 +152,7 @@ def sync_users_from_clickup(pulse_members: List[Dict], send_invites: bool = True
     return results
 
 
-def resend_invite(user_id: int) -> bool:
+def resend_invite(user_id: int) -> dict:
     """
     Resend an invite email to a user who hasn't set up their password yet.
 
@@ -160,18 +160,31 @@ def resend_invite(user_id: int) -> bool:
         user_id: The user's database ID
 
     Returns:
-        True if invite was sent successfully
+        Dict with 'success' bool and 'error' message if failed
     """
-    from auth.db import get_user_by_id, generate_invite_token
+    from auth.db import get_user_by_id
 
     user = get_user_by_id(user_id)
     if not user:
         logger.error(f"User {user_id} not found")
-        return False
+        return {'success': False, 'error': 'User not found'}
 
     if user.get('password_hash'):
         logger.warning(f"User {user_id} already has a password set")
-        return False
+        return {'success': False, 'error': 'User already has a password set'}
+
+    # Check Resend configuration
+    import os
+    resend_key = os.environ.get("RESEND_API_KEY", "")
+    app_base_url = os.environ.get("APP_BASE_URL", "")
+
+    if not resend_key:
+        logger.error("RESEND_API_KEY not configured")
+        return {'success': False, 'error': 'Email service not configured (missing RESEND_API_KEY)'}
+
+    if not app_base_url:
+        logger.error("APP_BASE_URL not configured")
+        return {'success': False, 'error': 'Email service not configured (missing APP_BASE_URL)'}
 
     # Generate new invite token
     from auth.db import _get_conn, init_db
@@ -196,11 +209,16 @@ def resend_invite(user_id: int) -> bool:
         conn.commit()
 
         # Send the invite email
-        return send_invite_email(
+        email_sent = send_invite_email(
             email=user['email'],
             username=user['username'],
             invite_token=token
         )
+
+        if email_sent:
+            return {'success': True}
+        else:
+            return {'success': False, 'error': 'Failed to send email via Resend'}
     except Exception as e:
         logger.error(f"Error resending invite: {e}")
-        return False
+        return {'success': False, 'error': str(e)}
