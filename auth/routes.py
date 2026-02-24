@@ -514,10 +514,4 @@ def api_resend_invite(user_id):
         return jsonify({'error': 'Failed to send invite email'}), 500
 
 
-@auth_bp.route('/api/admin/sync-users', methods=['POST'])
-@admin_required
-def api_sync_users():
-    """Trigger user sync from ClickUp (admin only)."""
-    # This will be called from app.py which has access to get_pulse_team_members
-    # Return a flag that tells app.py to do the sync
-    return jsonify({'action': 'sync_users'})
+# Note: /api/admin/sync-users is defined in app.py (needs access to get_pulse_team_members)
