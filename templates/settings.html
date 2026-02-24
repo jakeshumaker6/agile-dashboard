@@ -53,6 +53,20 @@
     text-align: center;
     margin-top: 16px;
 }
+.inline-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.inline-form input {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+.inline-form button {
+    padding: 8px 16px;
+    width: auto;
+}
 {% endblock %}
 
 {% block content %}
@@ -65,7 +79,10 @@
     <h2>Account Information</h2>
     <div class="setting-item">
         <span class="setting-label">Name</span>
-        <span class="setting-value">{{ user.username }}</span>
+        <form id="change-name-form" class="inline-form">
+            <input type="text" id="username" name="username" value="{{ user.username }}" required>
+            <button type="submit">Save</button>
+        </form>
     </div>
     <div class="setting-item">
         <span class="setting-label">Role</span>
@@ -101,6 +118,29 @@
 
 {% block scripts %}
 <script>
+document.getElementById('change-name-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const msgDiv = document.getElementById('message');
+    const username = document.getElementById('username').value;
+
+    try {
+        const response = await fetch('/settings/change-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            msgDiv.innerHTML = '<div class="success">' + data.message + '</div>';
+        } else {
+            msgDiv.innerHTML = '<div class="error">' + data.error + '</div>';
+        }
+    } catch (err) {
+        msgDiv.innerHTML = '<div class="error">An error occurred. Please try again.</div>';
+    }
+});
+
 document.getElementById('change-password-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const msgDiv = document.getElementById('message');

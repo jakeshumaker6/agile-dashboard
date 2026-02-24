@@ -397,6 +397,28 @@ def change_password():
         return jsonify({'error': 'Failed to change password'}), 500
 
 
+@auth_bp.route('/settings/change-name', methods=['POST'])
+@login_required
+def change_name():
+    """Change display name from settings."""
+    user = get_user_by_id(session.get('user_id'))
+
+    data = request.get_json()
+    new_name = data.get('username', '').strip()
+
+    if not new_name:
+        return jsonify({'error': 'Name cannot be empty'}), 400
+
+    if len(new_name) > 100:
+        return jsonify({'error': 'Name is too long'}), 400
+
+    if update_user(user['id'], username=new_name):
+        session['username'] = new_name
+        return jsonify({'message': 'Name updated successfully'})
+    else:
+        return jsonify({'error': 'Failed to update name'}), 500
+
+
 # ============ Admin User Management ============
 
 @auth_bp.route('/admin/users')
