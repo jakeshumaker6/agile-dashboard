@@ -1,0 +1,32 @@
+{% extends "auth_base.html" %}
+
+{% block title %}Verify 2FA | Pulse Agile Dashboard{% endblock %}
+
+{% block content %}
+<h1>Enter verification code</h1>
+<p class="subtitle">Open your authenticator app and enter the 6-digit code</p>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<form method="POST">
+    <div class="form-group">
+        <label for="code">Verification Code</label>
+        <input type="text" id="code" name="code" class="code-input" placeholder="000000" maxlength="6" pattern="[0-9]{6}" autocomplete="off" autofocus required>
+    </div>
+    <button type="submit">Verify</button>
+</form>
+
+<div class="links">
+    <a href="{{ url_for('auth.logout') }}">Sign out and use a different account</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('code').addEventListener('input', function(e) {
+        this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6);
+    });
+</script>
+{% endblock %}

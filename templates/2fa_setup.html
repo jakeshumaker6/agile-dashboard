@@ -1,0 +1,42 @@
+{% extends "auth_base.html" %}
+
+{% block title %}Set Up 2FA | Pulse Agile Dashboard{% endblock %}
+
+{% block content %}
+<h1>Set up two-factor authentication</h1>
+<p class="subtitle">Scan the QR code with your authenticator app</p>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="qr-code">
+    <img src="data:image/png;base64,{{ qr_code_data }}" alt="QR Code" width="200" height="200">
+</div>
+
+<p style="text-align: center; font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+    Can't scan? Enter this code manually:
+</p>
+<div class="secret-display">{{ secret }}</div>
+
+<form method="POST">
+    <div class="form-group">
+        <label for="code">Verification Code</label>
+        <input type="text" id="code" name="code" class="code-input" placeholder="000000" maxlength="6" pattern="[0-9]{6}" autocomplete="off" autofocus required>
+    </div>
+    <button type="submit">Verify & Enable 2FA</button>
+</form>
+
+<p style="text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 20px;">
+    Use Google Authenticator, Authy, or any TOTP app
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Auto-format and focus
+    document.getElementById('code').addEventListener('input', function(e) {
+        this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6);
+    });
+</script>
+{% endblock %}

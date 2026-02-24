@@ -20,6 +20,8 @@ from client_health import build_client_health_data, fetch_grain_recordings, fetc
 from client_health_cache import read_cache, write_cache, is_cache_empty
 from sentiment_overrides import load_overrides, save_override, delete_override, apply_overrides
 from client_mappings import load_mappings, save_email_mapping, save_grain_match
+from auth import auth_bp, login_required, admin_required, init_db as init_auth_db
+from auth.user_sync import sync_users_from_clickup
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -52,18 +54,11 @@ CLICKUP_TEAM_ID = os.environ.get("CLICKUP_TEAM_ID", "90132317968")
 FIBONACCI_FIELD_ID = os.environ.get("FIBONACCI_FIELD_ID", "c88be994-51de-4bd3-b2f5-7850202b84bd")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-# Dashboard password (single password for all users)
-DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "pulse2024")
+# Register auth blueprint
+app.register_blueprint(auth_bp)
 
-
-def login_required(f):
-    """Decorator to require login for routes."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get("authenticated"):
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated_function
+# Initialize auth database on startup
+init_auth_db()
 
 # Fibonacci score option IDs (for reverse lookup)
 SCORE_OPTIONS = {
@@ -1009,28 +1004,7 @@ def health_integrations():
     return jsonify({"integrations": checks})
 
 
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    """Login page."""
-    error = None
-    if request.method == "POST":
-        password = request.form.get("password", "")
-        if password == DASHBOARD_PASSWORD:
-            session.permanent = True  # Use the 24-hour lifetime
-            session["authenticated"] = True
-            return redirect(url_for("dashboard"))
-        else:
-            error = "Invalid password"
-
-    return render_template("login.html", error=error)
-
-
-@app.route("/logout")
-def logout():
-    """Logout and clear session."""
-    session.clear()
-    return redirect(url_for("login"))
+# Note: /login and /logout are now handled by the auth blueprint
 
 
 @app.route("/")
@@ -1141,9 +1115,9 @@ def api_team_capacity():
 
 
 @app.route("/api/team-capacity", methods=["POST"])
-@login_required
+@admin_required
 def api_save_team_capacity():
-    """Save team capacity configuration (shared across all users)."""
+    """Save team capacity configuration (admin only)."""
     try:
         capacity = request.get_json()
         if not capacity or not isinstance(capacity, dict):
@@ -1183,9 +1157,9 @@ def api_cache_status():
 
 
 @app.route("/api/refresh-cache", methods=["POST"])
-@login_required
+@admin_required
 def api_refresh_cache():
-    """Manually trigger a cache refresh."""
+    """Manually trigger a cache refresh (admin only)."""
     logger.info("Manual cache refresh triggered")
     success = refresh_daily_cache()
     if success:
@@ -1242,9 +1216,9 @@ def api_client_health():
 
 
 @app.route("/api/client-health/refresh", methods=["POST"])
-@login_required
+@admin_required
 def api_client_health_refresh():
-    """Manually trigger a client health cache rebuild."""
+    """Manually trigger a client health cache rebuild (admin only)."""
     import threading
     t = threading.Thread(target=refresh_client_health_cache, daemon=True)
     t.start()
@@ -1310,16 +1284,16 @@ def _get_cached_grain_recordings(ttl=600):
 
 
 @app.route("/client-mapping")
-@login_required
+@admin_required
 def client_mapping():
-    """Serve the client mapping management page."""
+    """Serve the client mapping management page (admin only)."""
     return render_template("client_mapping.html")
 
 
 @app.route("/api/client-mapping")
-@login_required
+@admin_required
 def api_client_mapping():
-    """Get all client mappings, unmatched recordings, and overview data."""
+    """Get all client mappings, unmatched recordings, and overview data (admin only)."""
     try:
         mappings = load_mappings()
         accounts_data = fetch_active_accounts(clickup_request)
@@ -1386,9 +1360,9 @@ def api_client_mapping():
 
 
 @app.route("/api/client-mapping/email", methods=["POST"])
-@login_required
+@admin_required
 def api_client_mapping_email():
-    """Save email domain mapping for a client."""
+    """Save email domain mapping for a client (admin only)."""
     try:
         body = request.get_json()
         client = body.get("client")
@@ -1404,9 +1378,9 @@ def api_client_mapping_email():
 
 
 @app.route("/api/client-mapping/grain", methods=["POST"])
-@login_required
+@admin_required
 def api_client_mapping_grain():
-    """Save Grain recording -> client match."""
+    """Save Grain recording -> client match (admin only)."""
     try:
         body = request.get_json()
         recording_id = body.get("recording_id")
@@ -1421,9 +1395,9 @@ def api_client_mapping_grain():
 
 
 @app.route("/api/client-mapping/unmatched-recordings")
-@login_required
+@admin_required
 def api_unmatched_recordings():
-    """Get Grain recordings not yet matched to a client."""
+    """Get Grain recordings not yet matched to a client (admin only)."""
     try:
         mappings = load_mappings()
         accounts_data = fetch_active_accounts(clickup_request)
@@ -1452,6 +1426,97 @@ def api_unmatched_recordings():
 
 
 # ============================================================================
+# One-Time Setup Route (for initial admin creation on Render)
+# ============================================================================
+
+SETUP_SECRET = os.environ.get("SETUP_SECRET", "")
+
+@app.route("/setup-admin")
+def setup_admin():
+    """
+    One-time admin setup. Access with ?secret=YOUR_SETUP_SECRET&password=YOUR_PASSWORD
+    Delete SETUP_SECRET env var after use to disable this route.
+    """
+    if not SETUP_SECRET:
+        return jsonify({"error": "Setup disabled (no SETUP_SECRET configured)"}), 403
+
+    secret = request.args.get("secret")
+    password = request.args.get("password", "changeme123")
+
+    if secret != SETUP_SECRET:
+        return jsonify({"error": "Invalid secret"}), 403
+
+    from auth.db import init_db as init_auth, create_user, set_user_password, get_user_by_email
+
+    init_auth()
+
+    # Get admin emails from env
+    admin_emails = os.environ.get("INITIAL_ADMIN_EMAILS", "jake@pulsemarketing.co").split(",")
+    email = admin_emails[0].strip()
+
+    existing = get_user_by_email(email)
+    if existing:
+        # Reset password for existing user
+        set_user_password(existing['id'], password)
+        return jsonify({
+            "status": "success",
+            "message": f"Password reset for existing user: {email}",
+            "email": email,
+            "password": password,
+            "note": "Delete SETUP_SECRET env var to disable this route"
+        })
+
+    # Create new admin user
+    user = create_user(email=email, username=email.split("@")[0], role="admin", password=password)
+    if user:
+        return jsonify({
+            "status": "success",
+            "message": f"Admin user created: {email}",
+            "email": email,
+            "password": password,
+            "note": "Delete SETUP_SECRET env var to disable this route"
+        })
+    return jsonify({"error": "Failed to create user"}), 500
+
+
+# ============================================================================
+# User Sync Routes (Admin Only)
+# ============================================================================
+
+@app.route("/api/admin/sync-users", methods=["POST"])
+@admin_required
+def api_admin_sync_users():
+    """Trigger user sync from ClickUp (admin only)."""
+    try:
+        data = request.get_json() or {}
+        send_invites = data.get("send_invites", False)  # Default to NOT sending invites
+
+        pulse_members = get_pulse_team_members()
+        results = sync_users_from_clickup(pulse_members, send_invites=send_invites)
+        return jsonify({
+            "status": "success",
+            "created": results["created"],
+            "updated": results["updated"],
+            "deactivated": results["deactivated"],
+            "errors": results["errors"],
+            "invites_sent": send_invites,
+        })
+    except Exception as e:
+        logger.error(f"Error syncing users: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+def sync_users_scheduled():
+    """Scheduled user sync (runs daily with other caches)."""
+    try:
+        pulse_members = get_pulse_team_members()
+        results = sync_users_from_clickup(pulse_members, send_invites=True)
+        logger.info(f"Scheduled user sync: {results['created']} created, {results['updated']} updated")
+    except Exception as e:
+        logger.error(f"Scheduled user sync failed: {e}")
+
+
+# ============================================================================
 # Scheduler Setup - Runs daily at 2pm Eastern Time
 # ============================================================================
 
@@ -1471,7 +1536,7 @@ def init_scheduler():
         replace_existing=True
     )
 
-    # Client health cache refresh daily at midnight EST
+    # Client health cache refresh daily at 2pm ET
     eastern = pytz.timezone('US/Eastern')
     client_health_trigger = CronTrigger(hour=14, minute=0, timezone=eastern)
     scheduler.add_job(
@@ -1482,8 +1547,18 @@ def init_scheduler():
         replace_existing=True
     )
 
+    # User sync daily at 2pm ET
+    user_sync_trigger = CronTrigger(hour=14, minute=0, timezone=eastern)
+    scheduler.add_job(
+        func=sync_users_scheduled,
+        trigger=user_sync_trigger,
+        id='user_sync',
+        name='Sync users from ClickUp daily at 2pm ET',
+        replace_existing=True
+    )
+
     scheduler.start()
-    logger.info("Scheduler started - agile cache at 2pm ET, client health at 2pm ET")
+    logger.info("Scheduler started - agile cache, client health, user sync all at 2pm ET")
 
     # Ensure scheduler shuts down cleanly
     atexit.register(lambda: scheduler.shutdown())

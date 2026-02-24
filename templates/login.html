@@ -1,198 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login | Pulse Agile Dashboard</title>
-    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+{% extends "auth_base.html" %}
 
-        :root {
-            --pulse-primary: #E85A71;
-            --pulse-primary-dark: #D14B62;
-            --pulse-accent: #F4A5AE;
-            --bg-dark: #0F1318;
-            --bg-card: #161B24;
-            --border: #2A3344;
-            --text: #E8EAED;
-            --text-muted: #8B95A5;
-            --error: #F87171;
-        }
+{% block title %}Login | Pulse Agile Dashboard{% endblock %}
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-dark);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-        }
+{% block content %}
+<h1>Sign in to your account</h1>
+<p class="subtitle">Enter your email and password to continue</p>
 
-        .login-container {
-            width: 100%;
-            max-width: 400px;
-        }
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
 
-        .login-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 40px;
-        }
-
-        .logo-section {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            margin-bottom: 32px;
-        }
-
-        .logo {
-            width: 48px;
-            height: 48px;
-            background: var(--pulse-primary);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 22px;
-            color: white;
-        }
-
-        .brand-text {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .brand-name {
-            font-size: 22px;
-            font-weight: 600;
-            color: #fff;
-        }
-
-        .brand-subtitle {
-            font-size: 12px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        h2 {
-            text-align: center;
-            font-size: 18px;
-            font-weight: 500;
-            color: var(--text);
-            margin-bottom: 24px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-            font-weight: 500;
-        }
-
-        input[type="password"] {
-            width: 100%;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 14px 16px;
-            border-radius: 8px;
-            font-size: 15px;
-            font-family: inherit;
-            transition: border-color 0.2s;
-        }
-
-        input[type="password"]:focus {
-            outline: none;
-            border-color: var(--pulse-primary);
-        }
-
-        button {
-            width: 100%;
-            background: var(--pulse-primary);
-            border: none;
-            color: white;
-            padding: 14px 24px;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 500;
-            font-family: inherit;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        button:hover {
-            background: var(--pulse-primary-dark);
-        }
-
-        .error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: var(--error);
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        footer {
-            text-align: center;
-            margin-top: 24px;
-            color: var(--text-muted);
-            font-size: 12px;
-        }
-
-        footer a {
-            color: var(--pulse-primary);
-            text-decoration: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="logo-section">
-                <img src="/static/logo.jpeg" alt="Pulse" style="height: 48px; width: auto; border-radius: 8px;">
-            </div>
-
-            <h2>Enter password to continue</h2>
-
-            {% if error %}
-            <div class="error">{{ error }}</div>
-            {% endif %}
-
-            <form method="POST">
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" placeholder="Enter dashboard password" autofocus required>
-                </div>
-                <button type="submit">Sign In</button>
-            </form>
-        </div>
-
-        <footer>
-            <a href="https://pulsemarketing.co" target="_blank">Pulse Marketing</a>
-        </footer>
+<form method="POST">
+    <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="you@pulsemarketing.co" autofocus required>
     </div>
-</body>
-</html>
+    <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Enter your password" required>
+    </div>
+    <button type="submit">Sign In</button>
+</form>
+
+<div class="links">
+    <a href="{{ url_for('auth.forgot_password') }}">Forgot your password?</a>
+</div>
+{% endblock %}

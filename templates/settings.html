@@ -1,0 +1,128 @@
+{% extends "auth_base.html" %}
+
+{% block title %}Settings | Pulse Agile Dashboard{% endblock %}
+
+{% block extra_styles %}
+.settings-section {
+    margin-bottom: 32px;
+}
+.settings-section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+}
+.setting-label {
+    font-size: 14px;
+    color: var(--text);
+}
+.setting-value {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.badge-admin {
+    background: rgba(232, 90, 113, 0.2);
+    color: var(--pulse-primary);
+}
+.badge-regular {
+    background: rgba(139, 149, 165, 0.2);
+    color: var(--text-muted);
+}
+.badge-enabled {
+    background: rgba(74, 222, 128, 0.2);
+    color: var(--success);
+}
+.back-link {
+    display: block;
+    text-align: center;
+    margin-top: 16px;
+}
+{% endblock %}
+
+{% block content %}
+<h1>Account Settings</h1>
+<p class="subtitle">{{ user.email }}</p>
+
+<div id="message"></div>
+
+<div class="settings-section">
+    <h2>Account Information</h2>
+    <div class="setting-item">
+        <span class="setting-label">Name</span>
+        <span class="setting-value">{{ user.username }}</span>
+    </div>
+    <div class="setting-item">
+        <span class="setting-label">Role</span>
+        <span class="badge {% if user.role == 'admin' %}badge-admin{% else %}badge-regular{% endif %}">{{ user.role | capitalize }}</span>
+    </div>
+    <div class="setting-item">
+        <span class="setting-label">Two-Factor Auth</span>
+        <span class="badge badge-enabled">Enabled</span>
+    </div>
+</div>
+
+<div class="settings-section">
+    <h2>Change Password</h2>
+    <form id="change-password-form">
+        <div class="form-group">
+            <label for="current_password">Current Password</label>
+            <input type="password" id="current_password" name="current_password" required>
+        </div>
+        <div class="form-group">
+            <label for="new_password">New Password</label>
+            <input type="password" id="new_password" name="new_password" minlength="8" required>
+        </div>
+        <div class="form-group">
+            <label for="confirm_password">Confirm New Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" minlength="8" required>
+        </div>
+        <button type="submit">Change Password</button>
+    </form>
+</div>
+
+<a href="/" class="back-link" style="color: var(--pulse-primary); text-decoration: none;">Back to Dashboard</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('change-password-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const msgDiv = document.getElementById('message');
+
+    const formData = new FormData(this);
+
+    try {
+        const response = await fetch('/settings/change-password', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            msgDiv.innerHTML = '<div class="success">' + data.message + '</div>';
+            this.reset();
+        } else {
+            msgDiv.innerHTML = '<div class="error">' + data.error + '</div>';
+        }
+    } catch (err) {
+        msgDiv.innerHTML = '<div class="error">An error occurred. Please try again.</div>';
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Pulse Agile Dashboard{% endblock %}</title>
+    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-dark: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --bg-dark: #0F1318;
+            --bg-card: #161B24;
+            --border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --error: #F87171;
+            --success: #4ADE80;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .auth-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .logo-section img {
+            height: 48px;
+            width: auto;
+            border-radius: 8px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 28px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        input[type="email"],
+        input[type="password"],
+        input[type="text"] {
+            width: 100%;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 14px 16px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--pulse-primary);
+        }
+
+        input::placeholder {
+            color: var(--text-muted);
+        }
+
+        button, .btn {
+            display: inline-block;
+            width: 100%;
+            background: var(--pulse-primary);
+            border: none;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        button:hover, .btn:hover {
+            background: var(--pulse-primary-dark);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--error);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .success {
+            background: rgba(74, 222, 128, 0.1);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            color: var(--success);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .links {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .links a {
+            color: var(--pulse-primary);
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .links a:hover {
+            text-decoration: underline;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        footer a {
+            color: var(--pulse-primary);
+            text-decoration: none;
+        }
+
+        .code-input {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 24px;
+            text-align: center;
+            letter-spacing: 8px;
+            padding: 16px 20px;
+        }
+
+        .secret-display {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 14px;
+            word-break: break-all;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .qr-code {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .qr-code img {
+            background: white;
+            padding: 16px;
+            border-radius: 12px;
+        }
+
+        {% block extra_styles %}{% endblock %}
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="logo-section">
+                <img src="/static/logo.jpeg" alt="Pulse">
+            </div>
+
+            {% block content %}{% endblock %}
+        </div>
+
+        <footer>
+            <a href="https://pulsemarketing.co" target="_blank">Pulse Marketing</a>
+        </footer>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

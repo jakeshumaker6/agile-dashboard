@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management | Pulse Agile Dashboard</title>
+    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-dark: #D14B62;
+            --bg-dark: #0F1318;
+            --bg-card: #161B24;
+            --border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --success: #4ADE80;
+            --warning: #FBBF24;
+            --error: #F87171;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--pulse-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--pulse-primary-dark);
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            font-size: 14px;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-admin {
+            background: rgba(232, 90, 113, 0.2);
+            color: var(--pulse-primary);
+        }
+
+        .badge-regular {
+            background: rgba(139, 149, 165, 0.2);
+            color: var(--text-muted);
+        }
+
+        .badge-active {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--success);
+        }
+
+        .badge-inactive {
+            background: rgba(248, 113, 113, 0.2);
+            color: var(--error);
+        }
+
+        .badge-pending {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--warning);
+        }
+
+        .actions-cell {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text);
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .action-btn.promote {
+            border-color: var(--pulse-primary);
+            color: var(--pulse-primary);
+        }
+
+        .action-btn.demote {
+            border-color: var(--text-muted);
+            color: var(--text-muted);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 16px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+            z-index: 1000;
+        }
+
+        .toast.success {
+            background: rgba(74, 222, 128, 0.9);
+            color: #052e16;
+        }
+
+        .toast.error {
+            background: rgba(248, 113, 113, 0.9);
+            color: #450a0a;
+        }
+
+        .toast.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .user-email {
+            color: var(--text);
+        }
+
+        .user-name {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>User Management</h1>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="syncUsers(false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
+                    </svg>
+                    Sync (No Invites)
+                </button>
+                <button class="btn btn-primary" onclick="syncUsers(true)">
+                    Sync & Send Invites
+                </button>
+                <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Role</th>
+                        <th>2FA</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table">
+                    {% for user in users %}
+                    <tr data-user-id="{{ user.id }}">
+                        <td>
+                            <div class="user-email">{{ user.email }}</div>
+                            <div class="user-name">{{ user.username }}</div>
+                        </td>
+                        <td>
+                            <span class="badge {% if user.role == 'admin' %}badge-admin{% else %}badge-regular{% endif %}">
+                                {{ user.role | capitalize }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.totp_enabled %}
+                            <span class="badge badge-active">Enabled</span>
+                            {% else %}
+                            <span class="badge badge-pending">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not user.password_hash %}
+                            <span class="badge badge-pending">Invite Pending</span>
+                            {% elif user.is_active %}
+                            <span class="badge badge-active">Active</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="actions-cell">
+                                {% if user.role == 'admin' %}
+                                <button class="action-btn demote" onclick="updateRole({{ user.id }}, 'regular')">Demote</button>
+                                {% else %}
+                                <button class="action-btn promote" onclick="updateRole({{ user.id }}, 'admin')">Promote</button>
+                                {% endif %}
+
+                                {% if not user.password_hash %}
+                                <button class="action-btn" onclick="resendInvite({{ user.id }})">Resend Invite</button>
+                                {% endif %}
+
+                                {% if user.is_active %}
+                                <button class="action-btn" onclick="deactivateUser({{ user.id }})">Deactivate</button>
+                                {% else %}
+                                <button class="action-btn" onclick="activateUser({{ user.id }})">Activate</button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="empty-state">
+                            No users found. Click "Sync from ClickUp" to import team members.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type + ' show';
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        async function updateRole(userId, role) {
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/role`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(data.message);
+                    location.reload();
+                } else {
+                    showToast(data.error, 'error');
+                }
+            } catch (err) {
+                showToast('An error occurred', 'error');
+            }
+        }
+
+        async function deactivateUser(userId) {
+            if (!confirm('Are you sure you want to deactivate this user?')) return;
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/deactivate`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(data.message);
+                    location.reload();
+                } else {
+                    showToast(data.error, 'error');
+                }
+            } catch (err) {
+                showToast('An error occurred', 'error');
+            }
+        }
+
+        async function activateUser(userId) {
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/activate`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(data.message);
+                    location.reload();
+                } else {
+                    showToast(data.error, 'error');
+                }
+            } catch (err) {
+                showToast('An error occurred', 'error');
+            }
+        }
+
+        async function resendInvite(userId) {
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/resend-invite`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(data.message);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            } catch (err) {
+                showToast('An error occurred', 'error');
+            }
+        }
+
+        async function syncUsers(sendInvites = false) {
+            const confirmMsg = sendInvites
+                ? 'This will sync users AND send invite emails to new users. Continue?'
+                : 'This will sync users WITHOUT sending invite emails. Continue?';
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                showToast('Syncing users from ClickUp...');
+                const response = await fetch('/api/admin/sync-users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ send_invites: sendInvites })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    const msg = `Synced: ${data.created} created, ${data.updated} updated` +
+                        (sendInvites ? ' (invites sent)' : ' (no invites)');
+                    showToast(msg);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast(data.error || 'Sync failed', 'error');
+                }
+            } catch (err) {
+                showToast('An error occurred', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
