@@ -20,7 +20,13 @@ import bcrypt
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "auth.db")
+# Use persistent disk on Render (/data), fall back to app directory for local dev
+if os.path.isdir("/data"):
+    DB_PATH = "/data/auth.db"
+else:
+    DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "auth.db")
+
+logger.info(f"Auth database path: {DB_PATH}")
 
 _local = threading.local()
 

@@ -1491,8 +1491,24 @@ def api_admin_sync_users():
         data = request.get_json() or {}
         send_invites = data.get("send_invites", False)  # Default to NOT sending invites
 
+        logger.info(f"Starting user sync (send_invites={send_invites})")
+
         pulse_members = get_pulse_team_members()
+        logger.info(f"Found {len(pulse_members)} Pulse team members from ClickUp")
+
+        if not pulse_members:
+            return jsonify({
+                "status": "warning",
+                "message": "No @pulsemarketing.co users found in ClickUp",
+                "created": 0,
+                "updated": 0,
+                "deactivated": 0,
+                "errors": [],
+            })
+
         results = sync_users_from_clickup(pulse_members, send_invites=send_invites)
+        logger.info(f"Sync complete: {results['created']} created, {results['updated']} updated")
+
         return jsonify({
             "status": "success",
             "created": results["created"],
@@ -1502,7 +1518,7 @@ def api_admin_sync_users():
             "invites_sent": send_invites,
         })
     except Exception as e:
-        logger.error(f"Error syncing users: {e}")
+        logger.error(f"Error syncing users: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
