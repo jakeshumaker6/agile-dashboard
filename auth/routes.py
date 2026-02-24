@@ -144,20 +144,28 @@ def setup_2fa():
             # Verify the code
             totp = pyotp.TOTP(secret)
             if totp.verify(code, valid_window=1):
-                # Save secret and enable 2FA
-                set_totp_secret(user['id'], secret)
-                enable_totp(user['id'])
+                try:
+                    # Save secret and enable 2FA
+                    set_totp_secret(user['id'], secret)
+                    enable_totp(user['id'])
 
-                # Update session
-                session['totp_enabled'] = True
-                session['last_2fa_at'] = datetime.now(timezone.utc).isoformat()
-                del session['totp_secret']
+                    # Update session
+                    session['totp_enabled'] = True
+                    session['last_2fa_at'] = datetime.now(timezone.utc).isoformat()
+                    if 'totp_secret' in session:
+                        del session['totp_secret']
 
-                # Send confirmation email
-                send_2fa_enabled_email(user['email'], user['username'])
+                    # Send confirmation email (non-blocking, ignore failures)
+                    try:
+                        send_2fa_enabled_email(user['email'], user['username'])
+                    except Exception as email_err:
+                        logger.warning(f"Failed to send 2FA confirmation email: {email_err}")
 
-                logger.info(f"2FA enabled for user: {user['email']}")
-                return redirect(url_for('dashboard'))
+                    logger.info(f"2FA enabled for user: {user['email']}")
+                    return redirect(url_for('dashboard'))
+                except Exception as e:
+                    logger.error(f"Error enabling 2FA: {e}")
+                    error = "Failed to enable 2FA. Please try again."
             else:
                 error = "Invalid verification code. Please try again."
 
