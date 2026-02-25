@@ -329,6 +329,25 @@
         </div>
     </div>
 
+        <!-- Excluded Assignees Section -->
+        <div style="margin-top: 32px;">
+            <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 16px;">Excluded Assignees</h2>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+                Non-Pulse employees who appear on tasks. They are hidden from contributor breakdowns and metrics.
+            </p>
+            <div class="card" style="padding: 20px;">
+                <div id="excluded-tags" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"></div>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="excluded-input" placeholder="Add name and press Enter"
+                        style="flex:1; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text); font-size: 14px; font-family: inherit; outline: none;"
+                        onkeydown="if(event.key==='Enter'){addExcluded(); event.preventDefault();}">
+                    <button class="btn btn-primary" onclick="addExcluded()">Add</button>
+                    <button class="btn btn-secondary" onclick="saveExcluded()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast"></div>
 
     <script>
@@ -404,6 +423,56 @@
                 showToast('An error occurred', 'error');
             }
         }
+
+        // --- Excluded Assignees ---
+        let excludedList = [];
+
+        async function loadExcluded() {
+            try {
+                const res = await fetch('/api/excluded-assignees');
+                excludedList = await res.json();
+                renderExcludedTags();
+            } catch (e) { console.error(e); }
+        }
+
+        function renderExcludedTags() {
+            const container = document.getElementById('excluded-tags');
+            container.innerHTML = excludedList.map((name, i) =>
+                `<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:16px;background:rgba(232,90,113,0.15);color:var(--pulse-primary);font-size:13px;">
+                    ${name}
+                    <span style="cursor:pointer;font-weight:700;" onclick="removeExcluded(${i})">&times;</span>
+                </span>`
+            ).join('');
+        }
+
+        function addExcluded() {
+            const input = document.getElementById('excluded-input');
+            const name = input.value.trim();
+            if (name && !excludedList.includes(name)) {
+                excludedList.push(name);
+                renderExcludedTags();
+            }
+            input.value = '';
+        }
+
+        function removeExcluded(idx) {
+            excludedList.splice(idx, 1);
+            renderExcludedTags();
+        }
+
+        async function saveExcluded() {
+            try {
+                const res = await fetch('/api/excluded-assignees', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(excludedList)
+                });
+                if (res.ok) showToast('Excluded assignees saved');
+                else showToast('Failed to save', 'error');
+            } catch (e) { showToast('Error saving', 'error'); }
+        }
+
+        loadExcluded();
 
         async function syncUsers(sendInvites = false) {
             const confirmMsg = sendInvites

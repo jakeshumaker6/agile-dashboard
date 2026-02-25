@@ -42,6 +42,7 @@ _cache_lock = threading.Lock()
 _daily_cache_lock = threading.Lock()
 _capacity_lock = threading.Lock()
 _grain_cache_lock = threading.Lock()
+_excluded_assignees_lock = threading.Lock()
 
 # Simple in-memory cache (for short-term API response caching)
 _cache = {}
@@ -111,8 +112,42 @@ EXPECTED_HOURS = {
 # Excluded folders
 EXCLUDED_FOLDERS = ["Client Template"]
 
-# Excluded assignees (non-Pulse employees who may appear on tasks)
-EXCLUDED_ASSIGNEES = ["Fazail Sabri"]
+# Excluded assignees config file (persistent)
+EXCLUDED_ASSIGNEES_FILE = _persistent_path("excluded_assignees.json")
+_excluded_assignees_cache = None  # In-memory copy
+
+
+def load_excluded_assignees() -> list:
+    """Load excluded assignees from persistent JSON config."""
+    global _excluded_assignees_cache
+    with _excluded_assignees_lock:
+        if _excluded_assignees_cache is not None:
+            return _excluded_assignees_cache
+        try:
+            if os.path.exists(EXCLUDED_ASSIGNEES_FILE):
+                with open(EXCLUDED_ASSIGNEES_FILE, 'r') as f:
+                    _excluded_assignees_cache = json.load(f)
+                    return _excluded_assignees_cache
+        except Exception as e:
+            logger.error(f"Error loading excluded assignees: {e}")
+        # Default value (migrated from hardcoded list)
+        _excluded_assignees_cache = ["Fazail Sabri"]
+        return _excluded_assignees_cache
+
+
+def save_excluded_assignees(names: list) -> bool:
+    """Save excluded assignees to persistent JSON config."""
+    global _excluded_assignees_cache
+    with _excluded_assignees_lock:
+        try:
+            with open(EXCLUDED_ASSIGNEES_FILE, 'w') as f:
+                json.dump(names, f, indent=2)
+            _excluded_assignees_cache = names
+            logger.info(f"Excluded assignees saved: {names}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving excluded assignees: {e}")
+            return False
 
 # Default hours for new team members
 DEFAULT_MEMBER_HOURS = 40
@@ -883,7 +918,7 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
     for task in completed_this_week:
         for assignee in task["assignees"]:
             # Skip excluded assignees
-            if assignee["username"] in EXCLUDED_ASSIGNEES:
+            if assignee["username"] in load_excluded_assignees():
                 continue
             aid = assignee["id"]
             assignee_breakdown[aid]["username"] = assignee["username"]
@@ -929,7 +964,7 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
             # Filter out excluded assignees from the list
             result["assignees"] = [
                 a["username"] for a in task["assignees"]
-                if a["username"] not in EXCLUDED_ASSIGNEES
+                if a["username"] not in load_excluded_assignees()
             ]
         return result
 
@@ -1313,6 +1348,32 @@ def api_save_team_capacity():
         return jsonify({"error": "Failed to save capacity"}), 500
     except Exception as e:
         logger.error(f"Error saving capacity: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/excluded-assignees")
+@login_required
+def api_get_excluded_assignees():
+    """Get the list of excluded assignees."""
+    return jsonify(load_excluded_assignees())
+
+
+@app.route("/api/excluded-assignees", methods=["POST"])
+@admin_required
+def api_save_excluded_assignees():
+    """Save the list of excluded assignees (admin only)."""
+    try:
+        names = request.get_json()
+        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+            return jsonify({"error": "Expected a JSON array of name strings"}), 400
+        # Strip whitespace and remove empties
+        names = [n.strip() for n in names if n.strip()]
+        success = save_excluded_assignees(names)
+        if success:
+            return jsonify({"status": "success", "excluded_assignees": names})
+        return jsonify({"error": "Failed to save"}), 500
+    except Exception as e:
+        logger.error(f"Error saving excluded assignees: {e}")
         return jsonify({"error": str(e)}), 500
 
 
