@@ -36,6 +36,13 @@ app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]  # Required — set in Render env vars
 app.permanent_session_lifetime = timedelta(hours=24)  # Sessions last 24 hours
 
+# Thread locks for shared mutable state (scheduler + request threads)
+import threading
+_cache_lock = threading.Lock()
+_daily_cache_lock = threading.Lock()
+_capacity_lock = threading.Lock()
+_grain_cache_lock = threading.Lock()
+
 # Simple in-memory cache (for short-term API response caching)
 _cache = {}
 CACHE_TTL = 60  # 60 seconds cache
@@ -123,17 +130,18 @@ def load_capacity_config():
     """Load saved team capacity configuration from file."""
     global _capacity_config
 
-    if _capacity_config is not None:
-        return _capacity_config
+    with _capacity_lock:
+        if _capacity_config is not None:
+            return _capacity_config
 
-    try:
-        if os.path.exists(CAPACITY_CONFIG_FILE):
-            with open(CAPACITY_CONFIG_FILE, 'r') as f:
-                _capacity_config = json.load(f)
-                logger.info(f"Capacity config loaded: {len(_capacity_config)} members")
-                return _capacity_config
-    except Exception as e:
-        logger.error(f"Error loading capacity config: {e}")
+        try:
+            if os.path.exists(CAPACITY_CONFIG_FILE):
+                with open(CAPACITY_CONFIG_FILE, 'r') as f:
+                    _capacity_config = json.load(f)
+                    logger.info(f"Capacity config loaded: {len(_capacity_config)} members")
+                    return _capacity_config
+        except Exception as e:
+            logger.error(f"Error loading capacity config: {e}")
 
     return {}
 
@@ -142,15 +150,16 @@ def save_capacity_config(capacity: dict):
     """Save team capacity configuration to file (shared across all users)."""
     global _capacity_config
 
-    try:
-        with open(CAPACITY_CONFIG_FILE, 'w') as f:
-            json.dump(capacity, f, indent=2)
-        _capacity_config = capacity
-        logger.info(f"Capacity config saved: {len(capacity)} members")
-        return True
-    except Exception as e:
-        logger.error(f"Error saving capacity config: {e}")
-        return False
+    with _capacity_lock:
+        try:
+            with open(CAPACITY_CONFIG_FILE, 'w') as f:
+                json.dump(capacity, f, indent=2)
+            _capacity_config = capacity
+            logger.info(f"Capacity config saved: {len(capacity)} members")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving capacity config: {e}")
+            return False
 
 
 def get_pulse_team_members():
@@ -215,16 +224,18 @@ def calculate_expected_points_from_hours(total_hours: float) -> float:
 
 def get_cached(key: str):
     """Get value from cache if not expired."""
-    if key in _cache:
-        value, expiry = _cache[key]
-        if time.time() < expiry:
-            return value
+    with _cache_lock:
+        if key in _cache:
+            value, expiry = _cache[key]
+            if time.time() < expiry:
+                return value
     return None
 
 
 def set_cached(key: str, value, ttl: int = CACHE_TTL):
     """Set value in cache with TTL."""
-    _cache[key] = (value, time.time() + ttl)
+    with _cache_lock:
+        _cache[key] = (value, time.time() + ttl)
 
 
 # ============================================================================
@@ -337,18 +348,19 @@ def load_daily_cache():
     """Load daily cache from file into memory."""
     global _daily_cache, _daily_cache_loaded
 
-    if _daily_cache_loaded and _daily_cache:
-        return _daily_cache
+    with _daily_cache_lock:
+        if _daily_cache_loaded and _daily_cache:
+            return _daily_cache
 
-    try:
-        if os.path.exists(DAILY_CACHE_FILE):
-            with open(DAILY_CACHE_FILE, 'r') as f:
-                _daily_cache = json.load(f)
-                _daily_cache_loaded = True
-                logger.info(f"Daily cache loaded from file, last updated: {_daily_cache.get('last_updated', 'unknown')}")
-                return _daily_cache
-    except Exception as e:
-        logger.error(f"Error loading daily cache: {e}")
+        try:
+            if os.path.exists(DAILY_CACHE_FILE):
+                with open(DAILY_CACHE_FILE, 'r') as f:
+                    _daily_cache = json.load(f)
+                    _daily_cache_loaded = True
+                    logger.info(f"Daily cache loaded from file, last updated: {_daily_cache.get('last_updated', 'unknown')}")
+                    return _daily_cache
+        except Exception as e:
+            logger.error(f"Error loading daily cache: {e}")
 
     return None
 
@@ -357,15 +369,16 @@ def save_daily_cache(data: dict):
     """Save daily cache to file."""
     global _daily_cache, _daily_cache_loaded
 
-    try:
-        data['last_updated'] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
-        with open(DAILY_CACHE_FILE, 'w') as f:
-            json.dump(data, f)
-        _daily_cache = data
-        _daily_cache_loaded = True
-        logger.info(f"Daily cache saved at {data['last_updated']}")
-    except Exception as e:
-        logger.error(f"Error saving daily cache: {e}")
+    with _daily_cache_lock:
+        try:
+            data['last_updated'] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
+            with open(DAILY_CACHE_FILE, 'w') as f:
+                json.dump(data, f)
+            _daily_cache = data
+            _daily_cache_loaded = True
+            logger.info(f"Daily cache saved at {data['last_updated']}")
+        except Exception as e:
+            logger.error(f"Error saving daily cache: {e}")
 
 
 def refresh_daily_cache():
@@ -378,7 +391,8 @@ def refresh_daily_cache():
     try:
         # Clear caches to force fresh API calls
         global _cache, _metrics_request_cache
-        _cache = {}
+        with _cache_lock:
+            _cache = {}
         _metrics_request_cache = {}
 
         # Fetch fresh tasks from API (bypasses cache, writes to SQLite)
@@ -1441,16 +1455,19 @@ def _get_cached_grain_recordings(ttl=600):
     """Return Grain recordings with a 10-min in-memory cache."""
     import time
     now = time.time()
-    if _grain_cache["data"] is not None and (now - _grain_cache["ts"]) < ttl:
-        return _grain_cache["data"]
+    with _grain_cache_lock:
+        if _grain_cache["data"] is not None and (now - _grain_cache["ts"]) < ttl:
+            return _grain_cache["data"]
     try:
         recs = fetch_grain_recordings()
-        _grain_cache["data"] = recs
-        _grain_cache["ts"] = now
+        with _grain_cache_lock:
+            _grain_cache["data"] = recs
+            _grain_cache["ts"] = now
         return recs
     except Exception as e:
         logger.error(f"Grain fetch failed: {e}")
-        return _grain_cache["data"] or []
+        with _grain_cache_lock:
+            return _grain_cache["data"] or []
 
 
 @app.route("/client-mapping")
