@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "pulse-agile-dashboard-secret-key-change-in-prod")
+app.secret_key = os.environ["SECRET_KEY"]  # Required — set in Render env vars
 app.permanent_session_lifetime = timedelta(hours=24)  # Sessions last 24 hours
 
 # Simple in-memory cache (for short-term API response caching)
@@ -63,7 +63,7 @@ CAPACITY_CONFIG_FILE = _persistent_path("team_capacity.json")
 _capacity_config = None  # In-memory copy
 
 # Configuration
-CLICKUP_API_TOKEN = os.environ.get("CLICKUP_API_TOKEN", "pk_82316108_QR4V75ZD4QS2SQTBBM1U16LWQITIBQ14")
+CLICKUP_API_TOKEN = os.environ["CLICKUP_API_TOKEN"]  # Required — set in Render env vars
 CLICKUP_TEAM_ID = os.environ.get("CLICKUP_TEAM_ID", "90132317968")
 FIBONACCI_FIELD_ID = os.environ.get("FIBONACCI_FIELD_ID", "c88be994-51de-4bd3-b2f5-7850202b84bd")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
