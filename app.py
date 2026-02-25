@@ -8,6 +8,7 @@ including Fibonacci points, time tracking, and efficiency analysis.
 import os
 import json
 import time
+import sqlite3
 import logging
 import urllib.request
 import urllib.error
@@ -39,6 +40,13 @@ app.permanent_session_lifetime = timedelta(hours=24)  # Sessions last 24 hours
 _cache = {}
 CACHE_TTL = 60  # 60 seconds cache
 
+# Request-scoped metrics cache (cleared between requests)
+# Keyed by (week_offset, assignee_id) to avoid redundant calculate_metrics calls
+_metrics_request_cache = {}
+
+# SQLite task cache for persistent storage between refreshes
+TASK_CACHE_DB = os.path.join(os.path.dirname(__file__), "task_cache.db")
+
 # Daily cache file for pre-computed dashboard data
 DAILY_CACHE_FILE = os.path.join(os.path.dirname(__file__), "daily_cache.json")
 _daily_cache = None  # In-memory copy of daily cache
@@ -56,6 +64,13 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Register auth blueprint
 app.register_blueprint(auth_bp)
+
+
+@app.before_request
+def _clear_request_caches():
+    """Clear request-scoped caches at the start of each HTTP request."""
+    global _metrics_request_cache
+    _metrics_request_cache = {}
 
 # Initialize auth database on startup
 init_auth_db()
@@ -207,6 +222,108 @@ def set_cached(key: str, value, ttl: int = CACHE_TTL):
 
 
 # ============================================================================
+# SQLite Task Cache - Persistent storage so users never wait on ClickUp API
+# ============================================================================
+
+def _init_task_cache_db():
+    """Create the task cache SQLite table if it doesn't exist."""
+    conn = sqlite3.connect(TASK_CACHE_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS task_cache (
+            id TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS task_cache_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _write_task_cache(tasks: list):
+    """Write all tasks to SQLite cache (replaces existing data)."""
+    conn = sqlite3.connect(TASK_CACHE_DB)
+    conn.execute("DELETE FROM task_cache")
+    for task in tasks:
+        # Serialize datetimes for JSON storage
+        serializable = dict(task)
+        for k in ("date_closed", "date_created", "due_date"):
+            if serializable.get(k) and isinstance(serializable[k], datetime):
+                serializable[k] = serializable[k].isoformat()
+        conn.execute("INSERT OR REPLACE INTO task_cache (id, data) VALUES (?, ?)",
+                      (task["id"], json.dumps(serializable)))
+    conn.execute("INSERT OR REPLACE INTO task_cache_meta (key, value) VALUES (?, ?)",
+                  ("last_updated", datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    logger.info(f"Task cache written: {len(tasks)} tasks to SQLite")
+
+
+def _read_task_cache() -> list:
+    """Read all tasks from SQLite cache. Returns empty list if no cache."""
+    if not os.path.exists(TASK_CACHE_DB):
+        return []
+    try:
+        conn = sqlite3.connect(TASK_CACHE_DB)
+        rows = conn.execute("SELECT data FROM task_cache").fetchall()
+        conn.close()
+        tasks = []
+        for (data_str,) in rows:
+            task = json.loads(data_str)
+            # Deserialize datetimes
+            for k in ("date_closed", "date_created", "due_date"):
+                if task.get(k) and isinstance(task[k], str):
+                    try:
+                        task[k] = datetime.fromisoformat(task[k])
+                    except (ValueError, TypeError):
+                        task[k] = None
+            tasks.append(task)
+        return tasks
+    except Exception as e:
+        logger.error(f"Error reading task cache: {e}")
+        return []
+
+
+# Initialize task cache DB on import
+_init_task_cache_db()
+
+
+def clickup_request_paginated(endpoint: str, result_key: str = "tasks", page_size: int = 100) -> list:
+    """Make paginated requests to ClickUp API, fetching all pages.
+
+    Args:
+        endpoint: API endpoint (may already contain query params)
+        result_key: Key in response that contains the list of items
+        page_size: Number of items per page (ClickUp default is 100)
+
+    Returns:
+        Combined list of all items across all pages.
+    """
+    separator = "&" if "?" in endpoint else "?"
+    all_items = []
+    page = 0
+
+    while True:
+        paginated_endpoint = f"{endpoint}{separator}page={page}"
+        data = clickup_request(paginated_endpoint)
+        items = data.get(result_key, [])
+        all_items.extend(items)
+
+        # If we got fewer items than page_size, we've reached the last page
+        if len(items) < page_size:
+            break
+        page += 1
+
+    if page > 0:
+        logger.info(f"Paginated fetch: {len(all_items)} total items across {page + 1} pages from {endpoint}")
+    return all_items
+
+
+# ============================================================================
 # Daily Cache System - Refreshes at 2pm ET daily
 # ============================================================================
 
@@ -253,9 +370,14 @@ def refresh_daily_cache():
     logger.info("Starting daily cache refresh...")
 
     try:
-        # Clear the short-term cache to force fresh API calls
-        global _cache
+        # Clear caches to force fresh API calls
+        global _cache, _metrics_request_cache
         _cache = {}
+        _metrics_request_cache = {}
+
+        # Fetch fresh tasks from API (bypasses cache, writes to SQLite)
+        tasks = _fetch_all_tasks_from_api()
+        set_cached("all_tasks", tasks)
 
         cache_data = {
             'metrics': {},
@@ -382,19 +504,43 @@ def get_week_bounds(date: datetime = None, week_offset: int = 0):
 
 
 def get_all_tasks():
-    """Fetch all tasks from ClickUp with their Fibonacci scores (cached).
+    """Fetch all tasks from ClickUp with their Fibonacci scores.
+
+    Uses a three-tier caching strategy:
+    1. In-memory cache (60s TTL) — instant, for repeated calls within same request cycle
+    2. SQLite persistent cache — fast, populated by daily 2pm refresh
+    3. Live ClickUp API — only used during refresh, never blocks users
 
     Uses a two-pass approach to identify parent tasks:
     1. First pass: collect all tasks and identify parent IDs (from subtask's parent field)
     2. Second pass: parse tasks, excluding parent tasks that have subtasks
     """
+    # Tier 1: in-memory cache
     cached = get_cached("all_tasks")
     if cached:
-        logger.info(f"Returning {len(cached)} cached tasks")
+        logger.info(f"Returning {len(cached)} in-memory cached tasks")
         return cached
 
-    logger.info("Fetching all tasks from ClickUp (no cache)")
+    # Tier 2: SQLite persistent cache
+    sqlite_tasks = _read_task_cache()
+    if sqlite_tasks:
+        logger.info(f"Returning {len(sqlite_tasks)} tasks from SQLite cache")
+        set_cached("all_tasks", sqlite_tasks)
+        return sqlite_tasks
 
+    # Tier 3: Live API fetch (only happens on first-ever load before any refresh)
+    logger.info("No cache available — fetching all tasks from ClickUp API")
+    tasks = _fetch_all_tasks_from_api()
+    set_cached("all_tasks", tasks)
+    return tasks
+
+
+def _fetch_all_tasks_from_api():
+    """Fetch all tasks from ClickUp API with pagination.
+
+    Called by refresh_daily_cache and as fallback when no cache exists.
+    Results are stored in SQLite for persistence.
+    """
     # First pass: collect all raw tasks and identify parent task IDs
     raw_tasks = []
     parent_task_ids = set()
@@ -415,12 +561,11 @@ def get_all_tasks():
                 continue
 
             for lst in folder.get("lists", []):
-                list_tasks = clickup_request(
+                list_tasks = clickup_request_paginated(
                     f"/list/{lst['id']}/task?include_closed=true&subtasks=true"
-                ).get("tasks", [])
+                )
 
                 for task in list_tasks:
-                    # Track parent IDs (tasks that have subtasks)
                     parent_id = task.get("parent")
                     if parent_id:
                         parent_task_ids.add(parent_id)
@@ -434,9 +579,9 @@ def get_all_tasks():
         # Folderless lists
         folderless = clickup_request(f"/space/{space_id}/list").get("lists", [])
         for lst in folderless:
-            list_tasks = clickup_request(
+            list_tasks = clickup_request_paginated(
                 f"/list/{lst['id']}/task?include_closed=true&subtasks=true"
-            ).get("tasks", [])
+            )
 
             for task in list_tasks:
                 parent_id = task.get("parent")
@@ -458,8 +603,11 @@ def get_all_tasks():
         if task_data:
             tasks.append(task_data)
 
-    logger.info(f"Returning {len(tasks)} tasks (after excluding parent tasks)")
-    set_cached("all_tasks", tasks)
+    logger.info(f"Fetched {len(tasks)} tasks from API (after excluding parent tasks)")
+
+    # Persist to SQLite
+    _write_task_cache(tasks)
+
     return tasks
 
 
@@ -583,7 +731,23 @@ def get_team_members():
 
 
 def calculate_metrics(week_offset: int = 0, assignee_id: int = None):
-    """Calculate all dashboard metrics for a given week."""
+    """Calculate all dashboard metrics for a given week.
+
+    Results are cached per (week_offset, assignee_id) within the same request
+    cycle to avoid redundant computation (e.g., velocity + daily averages
+    both call this for the same weeks).
+    """
+    cache_key = (week_offset, assignee_id)
+    if cache_key in _metrics_request_cache:
+        return _metrics_request_cache[cache_key]
+
+    result = _calculate_metrics_impl(week_offset, assignee_id)
+    _metrics_request_cache[cache_key] = result
+    return result
+
+
+def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
+    """Internal implementation of calculate_metrics."""
     monday, sunday = get_week_bounds(week_offset=week_offset)
     next_monday, next_sunday = get_week_bounds(week_offset=week_offset + 1)
 
