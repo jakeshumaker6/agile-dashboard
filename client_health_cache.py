@@ -16,7 +16,13 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "client_health_cache.db")
+def _persistent_path(filename):
+    """Use /data on Render (persistent disk), fall back to app dir for local dev."""
+    if os.path.isdir("/data"):
+        return os.path.join("/data", filename)
+    return os.path.join(os.path.dirname(__file__), filename)
+
+DB_PATH = _persistent_path("client_health_cache.db")
 
 _local = threading.local()
 

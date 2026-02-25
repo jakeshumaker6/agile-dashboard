@@ -45,15 +45,21 @@ CACHE_TTL = 60  # 60 seconds cache
 _metrics_request_cache = {}
 
 # SQLite task cache for persistent storage between refreshes
-TASK_CACHE_DB = os.path.join(os.path.dirname(__file__), "task_cache.db")
+def _persistent_path(filename):
+    """Use /data on Render (persistent disk), fall back to app dir for local dev."""
+    if os.path.isdir("/data"):
+        return os.path.join("/data", filename)
+    return os.path.join(os.path.dirname(__file__), filename)
+
+TASK_CACHE_DB = _persistent_path("task_cache.db")
 
 # Daily cache file for pre-computed dashboard data
-DAILY_CACHE_FILE = os.path.join(os.path.dirname(__file__), "daily_cache.json")
+DAILY_CACHE_FILE = _persistent_path("daily_cache.json")
 _daily_cache = None  # In-memory copy of daily cache
 _daily_cache_loaded = False
 
 # Team capacity config file (shared across all users)
-CAPACITY_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "team_capacity.json")
+CAPACITY_CONFIG_FILE = _persistent_path("team_capacity.json")
 _capacity_config = None  # In-memory copy
 
 # Configuration
