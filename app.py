@@ -1598,58 +1598,6 @@ def api_unmatched_recordings():
 # ============================================================================
 # One-Time Setup Route (for initial admin creation on Render)
 # ============================================================================
-
-SETUP_SECRET = os.environ.get("SETUP_SECRET", "")
-
-@app.route("/setup-admin")
-def setup_admin():
-    """
-    One-time admin setup. Access with ?secret=YOUR_SETUP_SECRET&password=YOUR_PASSWORD
-    Delete SETUP_SECRET env var after use to disable this route.
-    """
-    if not SETUP_SECRET:
-        return jsonify({"error": "Setup disabled (no SETUP_SECRET configured)"}), 403
-
-    secret = request.args.get("secret")
-    password = request.args.get("password", "changeme123")
-
-    if secret != SETUP_SECRET:
-        return jsonify({"error": "Invalid secret"}), 403
-
-    from auth.db import init_db as init_auth, create_user, set_user_password, get_user_by_email
-
-    init_auth()
-
-    # Get admin emails from env
-    admin_emails = os.environ.get("INITIAL_ADMIN_EMAILS", "jake@pulsemarketing.co").split(",")
-    email = admin_emails[0].strip()
-
-    existing = get_user_by_email(email)
-    if existing:
-        # Reset password for existing user
-        set_user_password(existing['id'], password)
-        return jsonify({
-            "status": "success",
-            "message": f"Password reset for existing user: {email}",
-            "email": email,
-            "password": password,
-            "note": "Delete SETUP_SECRET env var to disable this route"
-        })
-
-    # Create new admin user
-    user = create_user(email=email, username=email.split("@")[0], role="admin", password=password)
-    if user:
-        return jsonify({
-            "status": "success",
-            "message": f"Admin user created: {email}",
-            "email": email,
-            "password": password,
-            "note": "Delete SETUP_SECRET env var to disable this route"
-        })
-    return jsonify({"error": "Failed to create user"}), 500
-
-
-# ============================================================================
 # User Sync Routes (Admin Only)
 # ============================================================================
 
