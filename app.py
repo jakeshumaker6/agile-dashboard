@@ -1050,40 +1050,89 @@ def generate_ai_insights(metrics: dict, velocity_history: list) -> str:
     if not ANTHROPIC_API_KEY:
         return "AI insights require an Anthropic API key to be configured."
 
-    prompt = f"""Analyze this Agile sprint data and provide 2-3 brief, actionable insights for the engineering team.
+    history = velocity_history.get("history", velocity_history) if isinstance(velocity_history, dict) else velocity_history
 
-## This Week's Metrics
+    # Week-over-week comparison
+    this_week = history[-1] if history else {}
+    last_week = history[-2] if len(history) >= 2 else {}
+    wow_section = ""
+    if this_week and last_week:
+        def _delta(cur, prev, key):
+            c, p = cur.get(key, 0), prev.get(key, 0)
+            diff = c - p
+            pct = round(diff / p * 100) if p else 0
+            return c, p, diff, pct
+        pts_c, pts_p, pts_d, pts_pct = _delta(this_week, last_week, 'points')
+        tsk_c, tsk_p, tsk_d, _ = _delta(this_week, last_week, 'tasks')
+        hrs_c, hrs_p, hrs_d, _ = _delta(this_week, last_week, 'hours')
+        wow_section = f"""
+## Week-over-Week Comparison
+- Points: {pts_c} this week vs {pts_p} last week ({'+' if pts_d >= 0 else ''}{pts_d}, {'+' if pts_pct >= 0 else ''}{pts_pct}%)
+- Tasks: {tsk_c} vs {tsk_p} ({'+' if tsk_d >= 0 else ''}{tsk_d})
+- Hours tracked: {hrs_c} vs {hrs_p} ({'+' if hrs_d >= 0 else ''}{hrs_d})
+"""
+
+    # Per-contributor breakdown
+    contributor_section = ""
+    assignee_list = metrics.get('assignee_breakdown', [])
+    if assignee_list:
+        contributor_section = "\n## Per-Contributor Breakdown\n"
+        for a in assignee_list:
+            contributor_section += f"- {a['username']}: {a['points']} pts across {a['tasks']} tasks\n"
+
+    # Underestimated tasks
+    underest_section = ""
+    underestimated = metrics.get('underestimated_tasks', [])
+    if underestimated:
+        underest_section = "\n## Underestimated Tasks (actual > expected max)\n"
+        for t in underestimated[:5]:
+            underest_section += f"- \"{t['name']}\" ({t['score']}pt): took {t['actual_hours']}hrs, expected max {t['expected_max']}hrs (+{t['overage']}hrs over)\n"
+
+    # Team capacity
+    capacity_section = ""
+    try:
+        capacity = build_team_capacity()
+        if capacity:
+            total_hrs = sum(capacity.values())
+            expected_pts = calculate_expected_points_from_hours(total_hrs)
+            capacity_section = f"\n## Team Capacity\nTotal weekly hours: {total_hrs}hrs across {len(capacity)} members → expected ~{expected_pts} pts/week\n"
+            for name, hrs in sorted(capacity.items()):
+                capacity_section += f"- {name}: {hrs}hrs/week\n"
+    except Exception:
+        pass
+
+    prompt = f"""Analyze this Agile sprint data for a small agency engineering team. Provide 3-4 specific, actionable insights.
+
+## This Week's Metrics ({metrics['week']['label']})
 - Points Completed: {metrics['summary']['points_completed']}
 - Tasks Completed: {metrics['summary']['tasks_completed']}
-- Total Time Tracked: {metrics['summary']['total_time_hours']} hours
-
+- Hours Tracked: {metrics['summary']['total_time_hours']}
+- In Progress: {metrics['summary']['points_in_progress']} pts ({metrics['summary']['tasks_in_progress']} tasks)
+{wow_section}
 ## Time vs Estimate by Score
 """
     for score in [1, 2, 3, 5, 8, 13]:
         m = metrics['score_metrics'][score]
         if m['actual_avg']:
-            prompt += f"- {score} points: Expected {m['expected_min']}-{m['expected_max']}hrs, Actual avg {m['actual_avg']}hrs ({m['task_count']} tasks)\n"
-        else:
-            prompt += f"- {score} points: No completed tasks with time tracked\n"
+            prompt += f"- {score}pt: expected {m['expected_min']}-{m['expected_max']}hrs, actual avg {m['actual_avg']}hrs ({m['task_count']} tasks, {m['status']})\n"
+        elif m['total_completed']:
+            prompt += f"- {score}pt: {m['total_completed']} completed but no time tracked\n"
 
+    prompt += contributor_section + underest_section + capacity_section
     prompt += f"""
 ## Velocity Trend (Last 8 Weeks)
 """
-    history = velocity_history.get("history", velocity_history) if isinstance(velocity_history, dict) else velocity_history
     for week in history[-8:]:
-        prompt += f"- {week['week']}: {week['points']} points, {week['tasks']} tasks, {week['hours']}hrs\n"
-
-    if isinstance(velocity_history, dict):
-        prompt += f"\nBaseline velocity: {velocity_history.get('baseline', 0)} points/week\n"
-        prompt += f"Stretch goal: {velocity_history.get('stretch_goal', 0)} points/week\n"
+        prompt += f"- {week['week']}: {week['points']} pts, {week['tasks']} tasks, {week['hours']}hrs\n"
 
     prompt += """
-Provide insights in this format:
-1. [Efficiency observation about time tracking vs estimates]
-2. [Velocity trend observation]
-3. [One specific recommendation for improvement]
+Be specific — name people, tasks, and numbers. Provide:
+1. Week-over-week performance analysis (improving/declining and why)
+2. Contributor highlights (who delivered most, who may need support)
+3. Estimation accuracy (call out specific underestimated tasks and patterns)
+4. One concrete, specific recommendation (not generic advice like "improve communication")
 
-Keep each insight to 1-2 sentences. Be direct and actionable."""
+Keep each insight to 2-3 sentences max. Reference actual data points."""
 
     request_body = {
         "model": "claude-sonnet-4-20250514",
