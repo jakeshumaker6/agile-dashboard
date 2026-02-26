@@ -35,6 +35,13 @@ ACTIVE_ACCOUNT_STATUSES = {"engaged"}
 # TTL constant kept for sub-caches (active accounts, sentiment)
 CLIENT_HEALTH_CACHE_TTL = 1800  # 30 minutes
 
+# Communication tier cadences (in days)
+TIER_CADENCES = {
+    "high-touch": 7,
+    "medium-touch": 30,
+    "low-touch": 90,
+}
+
 # ============================================================================
 # Grain API
 # ============================================================================
@@ -659,8 +666,12 @@ def get_cached_sentiment(client_name, emails):
     return result
 
 
-def batch_claude_sentiment(clients_with_emails):
+def batch_claude_sentiment(clients_with_data):
     """Batch sentiment analysis: one Claude call for all clients.
+
+    Args:
+        clients_with_data: dict {client_name: {"emails": [...], "grain_notes": "..."}}
+
     Returns dict: {client_name: {"rating": "...", "reason": "..."}}
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -676,10 +687,10 @@ def batch_claude_sentiment(clients_with_emails):
             pass
 
     if not api_key:
-        return {c: {"rating": "neutral", "reason": "No API key"} for c in clients_with_emails}
+        return {c: {"rating": "neutral", "reason": "No API key"} for c in clients_with_data}
 
     # Build batch prompt
-    batch_text = """Analyze the client relationship health for each client below based on their recent emails.
+    batch_text = """Analyze the client relationship health for each client below based on their recent emails AND Grain call intelligence notes (if available).
 
 HEALTH SCORING RULES:
 - 🟢 positive: Regular communication happening, even if there are overdue tasks (communication = healthy relationship)
@@ -687,22 +698,39 @@ HEALTH SCORING RULES:
 - 🔴 negative: Overdue tasks AND no recent communication (both together = red flag)
 - 🔴 negative: Approaching project deadline and not close to completion
 - 🔴 negative: Client emailed us and we haven't responded in a long time
+- 🔴 negative: Grain notes indicate frustration, dissatisfaction, or escalation
 - 🟡 concerned: Client has gone quiet (was active, now silent)
 - 🟡 concerned: Tone shifted from friendly to terse/curt
 - 🟡 concerned: Scope creep discussions or payment delay mentions
+- 🟡 concerned: Grain notes indicate uncertainty, hesitation, or unresolved concerns
 - Weight recent emails MORE heavily than older ones
+- Grain intelligence notes reflect AI-summarized call content — treat them as a direct signal of client mood
 - IGNORE automated emails: WordPress updates, plugin notifications, security alerts, backup notices, uptime monitors
-- These are NOT real client communication and should not count
 
 Rate each: positive, neutral, concerned, or negative.
-Respond with JSON only: {"results": {"ClientName": {"rating": "...", "reason": "one sentence"}, ...}}
+For each client, provide a SPECIFIC, ACTIONABLE reason — reference actual email subjects, call topics, or note content. Not generic phrases like "No issues detected."
+For negative ratings, clearly state what triggered it.
+
+Respond with JSON only: {"results": {"ClientName": {"rating": "...", "reason": "one specific sentence"}, ...}}
 
 """
 
-    for client_name, emails in clients_with_emails.items():
+    for client_name, client_data in clients_with_data.items():
         batch_text += f"=== {client_name} ===\n"
-        for e in emails[:2]:  # Just top 2 emails per client to keep token count manageable
-            batch_text += f"Subject: {e.get('subject', '')}\nSnippet: {e.get('snippet', '')}\n"
+
+        emails = client_data.get("emails", [])
+        grain_notes = client_data.get("grain_notes", "")
+
+        if emails:
+            batch_text += "Recent emails:\n"
+            for e in emails[:2]:
+                batch_text += f"  Subject: {e.get('subject', '')}\n  Snippet: {e.get('snippet', '')}\n"
+        else:
+            batch_text += "No recent emails found.\n"
+
+        if grain_notes:
+            batch_text += f"Grain call intelligence notes:\n  {grain_notes[:500]}\n"
+
         batch_text += "\n"
 
     request_body = {
@@ -736,7 +764,7 @@ Respond with JSON only: {"results": {"ClientName": {"rating": "...", "reason": "
                 results = parsed.get("results", parsed)
                 # Map results back, handling name variations
                 mapped = {}
-                for client_name in clients_with_emails:
+                for client_name in clients_with_data:
                     if client_name in results:
                         mapped[client_name] = results[client_name]
                     else:
@@ -751,7 +779,7 @@ Respond with JSON only: {"results": {"ClientName": {"rating": "...", "reason": "
     except Exception as e:
         logger.error(f"Batch Claude sentiment error: {e}")
 
-    return {c: {"rating": "neutral", "reason": "Analysis unavailable"} for c in clients_with_emails}
+    return {c: {"rating": "neutral", "reason": "Analysis unavailable"} for c in clients_with_data}
 
 
 # ============================================================================
@@ -953,6 +981,7 @@ def analyze_client_tasks(tasks):
         sum(t["days_overdue"] for t in overdue_tasks) / len(overdue_tasks)
         if overdue_tasks else 0
     )
+    max_days_overdue = max((t["days_overdue"] for t in overdue_tasks), default=0)
 
     return {
         "open_count": len(open_tasks),
@@ -961,6 +990,7 @@ def analyze_client_tasks(tasks):
         "total_count": total,
         "completion_rate": round(completion_rate, 1),
         "avg_days_overdue": round(avg_days_overdue, 1),
+        "max_days_overdue": max_days_overdue,
         "overdue_tasks": sorted(overdue_tasks, key=lambda x: x["days_overdue"], reverse=True),
         "assignees": sorted(list(assignees)),
     }
@@ -970,36 +1000,94 @@ def analyze_client_tasks(tasks):
 # Health Scoring
 # ============================================================================
 
-def calculate_health(task_metrics, days_since_email, days_since_call, email_sentiment):
+def detect_communication_tier(client_name, clickup_request_fn, ops_folders, recurring_lists, client_has_recent_calls):
+    """Detect communication tier for a client based on ClickUp structure.
+
+    - High-touch (7 day): has folder in Operations space (outside Recurring) AND recent calls
+    - Medium-touch (30 day): has list in Recurring Clients folder
+    - Low-touch (90 day): no ClickUp match
+
+    Args:
+        client_name: display name of client
+        ops_folders: list of folder dicts from Operations space
+        recurring_lists: list of list dicts from Recurring Clients folder
+        client_has_recent_calls: bool, whether client had calls in last 30 days
+
+    Returns: "high-touch", "medium-touch", or "low-touch"
     """
-    Calculate health status based on scoring logic.
-    Uses combined "last touchpoint" (min of email/call) for communication signals.
+    client_lower = client_name.lower()
+
+    # Check for folder in Operations space (outside Recurring Clients)
+    has_ops_folder = False
+    for folder in ops_folders:
+        folder_name = folder.get("name", "").lower()
+        folder_id = folder.get("id", "")
+        # Skip the Recurring Clients folder itself
+        if folder_id == RECURRING_CLIENTS_FOLDER_ID:
+            continue
+        if client_lower in folder_name or folder_name in client_lower:
+            has_ops_folder = True
+            break
+
+    if has_ops_folder and client_has_recent_calls:
+        return "high-touch"
+
+    # Check for list in Recurring Clients folder
+    for lst in recurring_lists:
+        list_name = lst.get("name", "").lower()
+        if client_lower in list_name or list_name in client_lower:
+            return "medium-touch"
+
+    return "low-touch"
+
+
+def calculate_health(task_metrics, days_since_email, days_since_call, sentiment, sentiment_reason, tier="low-touch"):
+    """
+    Calculate health status based on per-client tier thresholds and severity-based overdue.
+
+    Rules:
+    🔴 Red (action today):
+      - Negative sentiment on most recent email/Grain notes
+      - Any task 10+ days overdue (severity)
+      - No touchpoint in 2x expected cadence
+      - Two or more yellow signals escalate to red
+
+    🟡 Yellow:
+      - Concerned/shifting tone
+      - Any task 5-10 days overdue
+      - No touchpoint in 1.5x expected cadence
+
+    🟢 Green: everything else
+
     Returns: {"status": "green"|"yellow"|"red", "reasons": [...]}
     """
+    cadence = TIER_CADENCES.get(tier, 90)
     yellow_signals = []
     red_signals = []
 
-    # Task-based signals
-    overdue = task_metrics.get("overdue_count", 0)
-    if overdue >= 4:
-        red_signals.append(f"{overdue} overdue tasks")
-    elif 1 <= overdue <= 3:
-        yellow_signals.append(f"{overdue} overdue task{'s' if overdue > 1 else ''}")
+    # Overdue severity: MAX days overdue across all tasks
+    max_days_overdue = task_metrics.get("max_days_overdue", 0)
+    if max_days_overdue >= 10:
+        red_signals.append(f"Task {max_days_overdue} days overdue")
+    elif max_days_overdue >= 5:
+        yellow_signals.append(f"Task {max_days_overdue} days overdue")
 
-    # Combined touchpoint signal (minimum of email and call days)
+    # Combined touchpoint signal
     touchpoints = [d for d in [days_since_email, days_since_call] if d is not None]
     if touchpoints:
         days_since_touchpoint = min(touchpoints)
-        if days_since_touchpoint > 14:
-            red_signals.append(f"No touchpoint in {days_since_touchpoint} days")
-        elif days_since_touchpoint > 7:
-            yellow_signals.append(f"Last touchpoint {days_since_touchpoint} days ago")
+        red_threshold = cadence * 2
+        yellow_threshold = cadence * 1.5
+        if days_since_touchpoint > red_threshold:
+            red_signals.append(f"No touchpoint in {days_since_touchpoint} days (expected every {cadence}d)")
+        elif days_since_touchpoint > yellow_threshold:
+            yellow_signals.append(f"Last touchpoint {days_since_touchpoint} days ago (expected every {cadence}d)")
 
     # Sentiment signals
-    if email_sentiment in ("negative",):
-        red_signals.append("Negative email sentiment")
-    elif email_sentiment in ("concerned", "mildly_negative"):
-        yellow_signals.append("Concerned email tone")
+    if sentiment in ("negative",):
+        red_signals.append(f"Negative sentiment: {sentiment_reason}" if sentiment_reason else "Negative sentiment detected")
+    elif sentiment in ("concerned",):
+        yellow_signals.append(f"Concerned tone: {sentiment_reason}" if sentiment_reason else "Concerned tone detected")
 
     # Determine status
     if red_signals:
@@ -1031,6 +1119,24 @@ def build_client_health_data(clickup_request_fn):
     if not active_clients:
         logger.warning("No active accounts found in ClickUp — dashboard will be empty")
 
+    # 0b. Fetch Operations space folders and Recurring Clients lists for tier detection
+    ops_folders = []
+    recurring_lists = []
+    try:
+        folders_data = clickup_request_fn(f"/space/{OPERATIONS_SPACE_ID}/folder")
+        ops_folders = folders_data.get("folders", [])
+    except Exception as e:
+        logger.error(f"Error fetching Operations folders for tier detection: {e}")
+
+    try:
+        recurring_data = clickup_request_fn(f"/folder/{RECURRING_CLIENTS_FOLDER_ID}")
+        recurring_lists = recurring_data.get("lists", [])
+        if not recurring_lists:
+            recurring_lists_data = clickup_request_fn(f"/folder/{RECURRING_CLIENTS_FOLDER_ID}/list")
+            recurring_lists = recurring_lists_data.get("lists", [])
+    except Exception as e:
+        logger.error(f"Error fetching Recurring Clients lists for tier detection: {e}")
+
     # 1. ClickUp tasks
     client_tasks = fetch_client_tasks(clickup_request_fn, active_clients=active_clients)
 
@@ -1038,6 +1144,8 @@ def build_client_health_data(clickup_request_fn):
     recordings = fetch_grain_recordings()
     client_last_call = {}
     client_recent_calls = defaultdict(list)
+    client_grain_notes = {}  # {client_name: intelligence_notes_md from most recent recording}
+
     for rec in recordings:
         matched = match_client_to_recording(rec, active_clients)
         if matched:
@@ -1056,6 +1164,10 @@ def build_client_health_data(clickup_request_fn):
 
                     if matched not in client_last_call or rec_date > client_last_call[matched]:
                         client_last_call[matched] = rec_date
+                        # Store intelligence notes from the most recent recording
+                        notes = rec.get("intelligence_notes_md", "")
+                        if notes:
+                            client_grain_notes[matched] = notes
 
                     client_recent_calls[matched].append({
                         "title": rec.get("title") or rec.get("name", ""),
@@ -1070,9 +1182,26 @@ def build_client_health_data(clickup_request_fn):
         client_recent_calls[client].sort(key=lambda x: x["date"], reverse=True)
         client_recent_calls[client] = client_recent_calls[client][:5]  # Keep top 5
 
+    # Determine which clients had calls in last 30 days (for tier detection)
+    now_dt = datetime.now(timezone.utc)
+    thirty_days_ago = now_dt - timedelta(days=30)
+    client_has_recent_calls = {}
+    for client_name in active_clients:
+        last_call = client_last_call.get(client_name)
+        client_has_recent_calls[client_name] = last_call is not None and last_call > thirty_days_ago
+
+    # Detect communication tier for each client
+    client_tiers = {}
+    for client_name in active_clients:
+        client_tiers[client_name] = detect_communication_tier(
+            client_name, clickup_request_fn, ops_folders, recurring_lists,
+            client_has_recent_calls.get(client_name, False)
+        )
+    logger.info(f"Client tiers: {client_tiers}")
+
     # 3. Gmail (fetch emails for all clients first, then batch Claude sentiment)
     client_email_data = {}
-    clients_with_emails = {}  # {client_name: [emails]} for Claude batch
+    clients_for_sentiment = {}  # {client_name: {"emails": [...], "grain_notes": "..."}} for Claude batch
 
     # Load client mappings for domain-based email search
     from client_mappings import load_mappings as _load_client_mappings
@@ -1091,7 +1220,6 @@ def build_client_health_data(clickup_request_fn):
             emails = search_client_emails_all_accounts(client, max_results=3)
         if emails:
             latest = max(emails, key=lambda e: e.get("date_ts", 0))
-            clients_with_emails[client] = emails
             client_email_data[client] = {
                 "last_date": latest.get("date"),
                 "last_date_ts": latest.get("date_ts"),
@@ -1104,6 +1232,11 @@ def build_client_health_data(clickup_request_fn):
                     "snippet": e["snippet"],
                 } for e in emails],
             }
+            # Include both emails and grain notes for sentiment analysis
+            clients_for_sentiment[client] = {
+                "emails": emails,
+                "grain_notes": client_grain_notes.get(client, ""),
+            }
         else:
             client_email_data[client] = {
                 "last_date": None,
@@ -1112,24 +1245,40 @@ def build_client_health_data(clickup_request_fn):
                 "sentiment_reason": "No recent emails",
                 "recent_emails": [],
             }
+            # Still analyze grain notes even without emails
+            grain_notes = client_grain_notes.get(client, "")
+            if grain_notes:
+                clients_for_sentiment[client] = {
+                    "emails": [],
+                    "grain_notes": grain_notes,
+                }
 
     # 3b. Batch Claude sentiment analysis (one API call for all clients)
-    if clients_with_emails:
-        logger.info(f"Running batch Claude sentiment for {len(clients_with_emails)} clients...")
-        batch_results = batch_claude_sentiment(clients_with_emails)
+    if clients_for_sentiment:
+        logger.info(f"Running batch Claude sentiment for {len(clients_for_sentiment)} clients...")
+        batch_results = batch_claude_sentiment(clients_for_sentiment)
         for client_name, result in batch_results.items():
             if client_name in client_email_data:
                 client_email_data[client_name]["sentiment"] = result["rating"]
                 client_email_data[client_name]["sentiment_reason"] = result["reason"]
+            else:
+                # Client had no emails but had grain notes — create entry
+                client_email_data[client_name] = {
+                    "last_date": None,
+                    "last_date_ts": None,
+                    "sentiment": result["rating"],
+                    "sentiment_reason": result["reason"],
+                    "recent_emails": [],
+                }
         logger.info("Batch Claude sentiment complete")
 
     # 4. Build per-client health data
-    now_dt = datetime.now(timezone.utc)
     clients = []
 
     for client_name in active_clients:
         tasks = client_tasks.get(client_name, [])
         task_metrics = analyze_client_tasks(tasks)
+        tier = client_tiers.get(client_name, "low-touch")
 
         # Days since last email
         email_data = client_email_data.get(client_name, {})
@@ -1143,11 +1292,22 @@ def build_client_health_data(clickup_request_fn):
         if client_name in client_last_call:
             days_since_call = (now_dt - client_last_call[client_name]).days
 
-        # Health scoring
+        # Health scoring with tier-based thresholds
+        sentiment = email_data.get("sentiment", "neutral")
+        sentiment_reason = email_data.get("sentiment_reason", "")
         health = calculate_health(
             task_metrics, days_since_email, days_since_call,
-            email_data.get("sentiment", "neutral")
+            sentiment, sentiment_reason, tier=tier
         )
+
+        # Combine Claude sentiment reason with rule-based reasons into a single explanation
+        rule_reasons = health.get("reasons", [])
+        combined_reason_parts = []
+        if rule_reasons and rule_reasons != ["All healthy"]:
+            combined_reason_parts.extend(rule_reasons)
+        if sentiment_reason and sentiment_reason not in combined_reason_parts:
+            combined_reason_parts.append(f"Sentiment: {sentiment_reason}")
+        health["reason"] = "; ".join(combined_reason_parts) if combined_reason_parts else "All healthy"
 
         # Combined last touchpoint
         touchpoints = [d for d in [days_since_email, days_since_call] if d is not None]
@@ -1156,6 +1316,8 @@ def build_client_health_data(clickup_request_fn):
         clients.append({
             "name": client_name,
             "health": health,
+            "tier": tier,
+            "tier_cadence_days": TIER_CADENCES.get(tier, 90),
             "account_manager": account_managers.get(client_name, ""),
             "tasks": {
                 "open": task_metrics["open_count"],
@@ -1164,6 +1326,7 @@ def build_client_health_data(clickup_request_fn):
                 "total": task_metrics["total_count"],
                 "completion_rate": task_metrics["completion_rate"],
                 "avg_days_overdue": task_metrics["avg_days_overdue"],
+                "max_days_overdue": task_metrics["max_days_overdue"],
                 "overdue_list": task_metrics["overdue_tasks"][:10],
                 "assignees": task_metrics["assignees"],
             },
@@ -1177,6 +1340,7 @@ def build_client_health_data(clickup_request_fn):
                 "last_call_date": client_last_call.get(client_name, "").isoformat() if client_name in client_last_call else None,
                 "recent_emails": email_data.get("recent_emails", [])[:5],
                 "recent_calls": client_recent_calls.get(client_name, []),
+                "grain_notes": client_grain_notes.get(client_name, ""),
             },
         })
 
