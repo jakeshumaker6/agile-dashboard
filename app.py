@@ -2003,6 +2003,170 @@ def sync_users_scheduled():
 
 
 # ============================================================================
+# Sprint Planning Routes (Admin Only)
+# ============================================================================
+
+@app.route("/sprint-planning")
+@admin_required
+def sprint_planning():
+    """Serve the sprint planning assistant page."""
+    return render_template("sprint_planning.html")
+
+
+@app.route("/api/sprint-planning")
+@admin_required
+def api_sprint_planning():
+    """Get sprint planning data: backlog, capacity, workload, suggestions, history."""
+    try:
+        pulse_members = get_pulse_team_members()
+        excluded = load_excluded_assignees()
+        all_tasks = get_all_tasks()
+        capacity = build_team_capacity()
+
+        pulse_members = [m for m in pulse_members if m["username"] not in excluded]
+
+        cur_mon, cur_sun = get_week_bounds(week_offset=0)
+
+        # ── Backlog: unassigned or status=backlog, not complete ──
+        backlog_tasks = []
+        for t in all_tasks:
+            if t["is_complete"]:
+                continue
+            status_lower = t["status"].lower()
+            is_unassigned = len(t["assignees"]) == 0
+            is_backlog = status_lower in ("backlog", "to do", "open", "pending")
+            if is_unassigned or is_backlog:
+                backlog_tasks.append({
+                    "id": t["id"],
+                    "name": t["name"],
+                    "folder": t["folder"],
+                    "list": t["list"],
+                    "score": t["score"],
+                    "status": t["status"],
+                    "assignees": [a["username"] for a in t["assignees"]],
+                    "url": t["url"],
+                    "due_date": t["due_date"].isoformat() if t["due_date"] else None,
+                    "priority": _task_priority_rank(t),
+                })
+        backlog_tasks.sort(key=lambda x: x["priority"])
+
+        # ── Team capacity & workload ──
+        active_statuses = ["in progress", "in review", "waiting response", "doing", "active", "working"]
+        team_data = []
+        for member in pulse_members:
+            mid = member["id"]
+            name = member["username"]
+            member_tasks = [t for t in all_tasks if any(a["id"] == mid for a in t["assignees"])]
+
+            # Current sprint assigned (not complete, active)
+            sprint_tasks = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() in active_statuses]
+            sprint_points = sum(t["score"] or 0 for t in sprint_tasks)
+
+            # Also count tasks completed this week
+            completed_this_week = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and cur_mon <= t["date_closed"] <= cur_sun]
+            completed_points = sum(t["score"] or 0 for t in completed_this_week)
+
+            # Capacity
+            member_hours = capacity.get(name, DEFAULT_MEMBER_HOURS)
+            expected_pts = calculate_expected_points_from_hours(member_hours)
+
+            # Historical velocity (last 4 weeks)
+            weekly_pts = []
+            for offset in range(-4, 0):
+                mon, sun = get_week_bounds(week_offset=offset)
+                week_completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and mon <= t["date_closed"] <= sun]
+                weekly_pts.append(sum(t["score"] or 0 for t in week_completed))
+            avg_velocity = round(sum(weekly_pts) / len(weekly_pts), 1) if weekly_pts else 0
+
+            available_points = max(0, round(expected_pts - sprint_points - completed_points))
+
+            team_data.append({
+                "id": mid,
+                "username": name,
+                "initials": member.get("initials", ""),
+                "capacity_hours": member_hours,
+                "expected_points": expected_pts,
+                "sprint_points": sprint_points,
+                "completed_points": completed_points,
+                "total_load": sprint_points + completed_points,
+                "available_points": available_points,
+                "avg_velocity": avg_velocity,
+                "weekly_points": weekly_pts,
+            })
+
+        # ── Sprint suggestions: fit high-priority backlog into available capacity ──
+        suggestions = []
+        remaining_capacity = {m["username"]: m["available_points"] for m in team_data}
+        for task in backlog_tasks:
+            pts = task["score"] or 1
+            # Find best-fit member (most remaining capacity)
+            best_member = None
+            best_remaining = -1
+            for m in team_data:
+                rem = remaining_capacity.get(m["username"], 0)
+                if rem >= pts and rem > best_remaining:
+                    best_member = m["username"]
+                    best_remaining = rem
+            if best_member:
+                suggestions.append({
+                    "task": task,
+                    "suggested_assignee": best_member,
+                    "remaining_after": best_remaining - pts,
+                })
+                remaining_capacity[best_member] -= pts
+            if len(suggestions) >= 20:
+                break
+
+        # ── Historical sprint performance (last 4 weeks) ──
+        history = []
+        for offset in range(-4, 0):
+            mon, sun = get_week_bounds(week_offset=offset)
+            week_label = mon.strftime("%b %d")
+            # All tasks that were in progress or completed during this week
+            completed = [t for t in all_tasks if t["is_complete"] and t["date_closed"] and mon <= t["date_closed"] <= sun]
+            actual_pts = sum(t["score"] or 0 for t in completed)
+            task_count = len(completed)
+            # Estimate planned = sum of expected points across team
+            planned_pts = sum(calculate_expected_points_from_hours(capacity.get(m["username"], DEFAULT_MEMBER_HOURS)) for m in pulse_members)
+            completion_rate = round((actual_pts / planned_pts) * 100) if planned_pts else 0
+            history.append({
+                "week": week_label,
+                "planned_points": planned_pts,
+                "actual_points": actual_pts,
+                "tasks_completed": task_count,
+                "completion_rate": completion_rate,
+            })
+
+        return jsonify({
+            "backlog": backlog_tasks,
+            "team": team_data,
+            "suggestions": suggestions,
+            "history": history,
+            "current_sprint": {
+                "start": cur_mon.strftime("%b %d"),
+                "end": cur_sun.strftime("%b %d"),
+            },
+        })
+    except Exception as e:
+        logger.error(f"Error in api_sprint_planning: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+def _task_priority_rank(task):
+    """Return a numeric rank for sorting: lower = higher priority. Uses due date + score."""
+    rank = 0
+    if task.get("due_date"):
+        days_until = (task["due_date"] - datetime.now()).days
+        rank = days_until
+    else:
+        rank = 999
+    # Higher score = more important
+    score = task.get("score") or 0
+    rank -= score * 2
+    return rank
+
+
+# ============================================================================
 # Scheduler Setup - Runs daily at 2pm Eastern Time
 # ============================================================================
 

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprint Planning | Pulse Agile Dashboard</title>
+    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-dark: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --pulse-navy: #1E2A4A;
+            --pulse-navy-light: #2D3D5E;
+            --bg-dark: #0F1318;
+            --bg-card: #161B24;
+            --bg-card-hover: #1D242F;
+            --border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --success: #4ADE80;
+            --warning: #FBBF24;
+            --danger: #F87171;
+        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg-dark); color: var(--text); min-height: 100vh; padding: 24px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .sidebar { position: fixed; top: 0; left: -280px; width: 280px; height: 100vh; background: var(--pulse-navy); transition: left 0.3s ease; z-index: 999; padding: 24px 0; }
+        .sidebar.open { left: 0; }
+        .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 998; display: none; }
+        .sidebar-overlay.visible { display: block; }
+        .sidebar-brand { padding: 0 24px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-brand img { height: 36px; border-radius: 6px; }
+        .sidebar-brand span { font-size: 16px; font-weight: 600; color: #fff; }
+        .sidebar-item { padding: 12px 24px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px; font-size: 14px; transition: background 0.2s; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-item.active { background: var(--pulse-primary); color: white; }
+        .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+        .header h1 { font-size: 28px; font-weight: 700; }
+        .header .sprint-label { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+        .card h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+        .tab-bar { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+        .tab-btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .tab-btn.active { background: var(--pulse-primary); color: white; border-color: var(--pulse-primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 10px 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); font-weight: 500; }
+        td { padding: 10px 12px; border-bottom: 1px solid rgba(42,51,68,0.5); }
+        tr:hover { background: var(--bg-card-hover); }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-score { background: rgba(232,90,113,0.2); color: var(--pulse-primary); }
+        .badge-green { background: rgba(74,222,128,0.15); color: var(--success); }
+        .badge-yellow { background: rgba(251,191,36,0.15); color: var(--warning); }
+        .badge-red { background: rgba(248,113,113,0.15); color: var(--danger); }
+        .capacity-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+        .capacity-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+        .loading { text-align: center; padding: 60px; color: var(--text-muted); }
+        a { color: var(--pulse-primary); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .suggestion-card { background: var(--bg-card-hover); border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .suggestion-card .task-name { font-weight: 500; }
+        .suggestion-card .assign-to { color: var(--success); font-size: 12px; }
+        .stat-row { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+        .stat-box { background: var(--bg-card-hover); border-radius: 8px; padding: 16px 20px; flex: 1; min-width: 140px; }
+        .stat-box .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-box .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <img src="/static/logo.jpeg" alt="Pulse">
+            <span>Pulse</span>
+        </div>
+        <a href="/" class="sidebar-item">Sprint Dashboard</a>
+        <a href="/client-health" class="sidebar-item">Client Health</a>
+        {% if session.role == 'admin' %}
+        <a href="/client-mapping" class="sidebar-item">Client Mapping</a>
+        <a href="/team-performance" class="sidebar-item">Team Performance</a>
+        <a href="/sprint-planning" class="sidebar-item active">Sprint Planning</a>
+        <a href="/admin/users" class="sidebar-item">User Management</a>
+        {% endif %}
+        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <a href="/settings" class="sidebar-item">Settings</a>
+            <a href="/logout" class="sidebar-item">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+                    <h1>🗓️ Sprint Planning Assistant</h1>
+                </div>
+                <div class="sprint-label" id="sprintLabel">Loading...</div>
+            </div>
+        </div>
+
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="showTab('workload')">Workload Balancer</button>
+            <button class="tab-btn" onclick="showTab('backlog')">Backlog</button>
+            <button class="tab-btn" onclick="showTab('suggestions')">Sprint Suggestions</button>
+            <button class="tab-btn" onclick="showTab('history')">Sprint History</button>
+        </div>
+
+        <div id="tab-workload" class="tab-content active">
+            <div class="stat-row" id="capacityStats"></div>
+            <div class="card">
+                <h2>Team Workload vs Capacity</h2>
+                <div style="height:300px;"><canvas id="workloadChart"></canvas></div>
+            </div>
+            <div class="card">
+                <h2>Member Details</h2>
+                <table>
+                    <thead><tr><th>Member</th><th>Capacity (pts)</th><th>Current Load</th><th>Available</th><th>Avg Velocity (4w)</th><th>Status</th></tr></thead>
+                    <tbody id="teamTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-backlog" class="tab-content">
+            <div class="card">
+                <h2>📋 Backlog Tasks <span id="backlogCount" style="color:var(--text-muted);font-size:14px;font-weight:400;"></span></h2>
+                <table>
+                    <thead><tr><th>Task</th><th>Folder / List</th><th>Score</th><th>Status</th><th>Assignees</th><th>Due</th></tr></thead>
+                    <tbody id="backlogTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-suggestions" class="tab-content">
+            <div class="card">
+                <h2>💡 Suggested Assignments</h2>
+                <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Based on priority and available capacity. Higher priority tasks assigned first to members with most headroom.</p>
+                <div id="suggestionsList"></div>
+            </div>
+        </div>
+
+        <div id="tab-history" class="tab-content">
+            <div class="card">
+                <h2>📊 Sprint Performance (Last 4 Weeks)</h2>
+                <div style="height:300px;"><canvas id="historyChart"></canvas></div>
+            </div>
+            <div class="card">
+                <h2>Weekly Breakdown</h2>
+                <table>
+                    <thead><tr><th>Week</th><th>Planned Pts</th><th>Actual Pts</th><th>Tasks Done</th><th>Completion Rate</th></tr></thead>
+                    <tbody id="historyTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('visible'); }
+    function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('visible'); }
+
+    function showTab(name) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-' + name).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    let workloadChart, historyChart;
+
+    async function loadData() {
+        try {
+            const res = await fetch('/api/sprint-planning');
+            const data = await res.json();
+            if (data.error) { alert('Error: ' + data.error); return; }
+            renderAll(data);
+        } catch(e) { console.error(e); }
+    }
+
+    function renderAll(data) {
+        // Sprint label
+        document.getElementById('sprintLabel').textContent = `Current Sprint: ${data.current_sprint.start} – ${data.current_sprint.end}`;
+
+        // Stats
+        const totalCapacity = data.team.reduce((s,m) => s + m.expected_points, 0);
+        const totalLoad = data.team.reduce((s,m) => s + m.total_load, 0);
+        const totalAvailable = data.team.reduce((s,m) => s + m.available_points, 0);
+        document.getElementById('capacityStats').innerHTML = `
+            <div class="stat-box"><div class="label">Team Capacity</div><div class="value">${totalCapacity} pts</div></div>
+            <div class="stat-box"><div class="label">Current Load</div><div class="value">${totalLoad} pts</div></div>
+            <div class="stat-box"><div class="label">Available</div><div class="value" style="color:var(--success)">${totalAvailable} pts</div></div>
+            <div class="stat-box"><div class="label">Backlog Items</div><div class="value">${data.backlog.length}</div></div>
+        `;
+
+        // Workload chart
+        const ctx1 = document.getElementById('workloadChart').getContext('2d');
+        if (workloadChart) workloadChart.destroy();
+        workloadChart = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: data.team.map(m => m.username),
+                datasets: [
+                    { label: 'Current Load', data: data.team.map(m => m.total_load), backgroundColor: data.team.map(m => {
+                        const pct = m.expected_points ? m.total_load / m.expected_points : 0;
+                        return pct > 0.9 ? 'rgba(248,113,113,0.7)' : pct > 0.7 ? 'rgba(251,191,36,0.7)' : 'rgba(74,222,128,0.7)';
+                    }) },
+                    { label: 'Capacity', data: data.team.map(m => m.expected_points), backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)', borderWidth: 1 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8B95A5' } } },
+                scales: { x: { ticks: { color: '#8B95A5' }, grid: { color: 'rgba(42,51,68,0.5)' } }, y: { ticks: { color: '#8B95A5' }, grid: { color: 'rgba(42,51,68,0.5)' }, beginAtZero: true } }
+            }
+        });
+
+        // Team table
+        document.getElementById('teamTable').innerHTML = data.team.map(m => {
+            const pct = m.expected_points ? m.total_load / m.expected_points : 0;
+            const statusClass = pct > 0.9 ? 'badge-red' : pct > 0.7 ? 'badge-yellow' : 'badge-green';
+            const statusText = pct > 0.9 ? 'Over' : pct > 0.7 ? 'Near' : 'Under';
+            return `<tr>
+                <td><strong>${m.username}</strong></td>
+                <td>${m.expected_points}</td>
+                <td>${m.total_load} (${m.sprint_points} active + ${m.completed_points} done)</td>
+                <td><strong>${m.available_points}</strong></td>
+                <td>${m.avg_velocity}</td>
+                <td><span class="badge ${statusClass}">${statusText} capacity</span></td>
+            </tr>`;
+        }).join('');
+
+        // Backlog
+        document.getElementById('backlogCount').textContent = `(${data.backlog.length} items)`;
+        document.getElementById('backlogTable').innerHTML = data.backlog.map(t => `<tr>
+            <td><a href="${t.url}" target="_blank">${t.name}</a></td>
+            <td style="color:var(--text-muted)">${t.folder} / ${t.list}</td>
+            <td>${t.score ? `<span class="badge badge-score">${t.score} pts</span>` : '—'}</td>
+            <td>${t.status}</td>
+            <td>${t.assignees.length ? t.assignees.join(', ') : '<span style="color:var(--text-muted)">Unassigned</span>'}</td>
+            <td style="color:var(--text-muted)">${t.due_date ? new Date(t.due_date).toLocaleDateString() : '—'}</td>
+        </tr>`).join('');
+
+        // Suggestions
+        document.getElementById('suggestionsList').innerHTML = data.suggestions.length ? data.suggestions.map(s => `
+            <div class="suggestion-card">
+                <div>
+                    <div class="task-name"><a href="${s.task.url}" target="_blank">${s.task.name}</a> ${s.task.score ? `<span class="badge badge-score">${s.task.score} pts</span>` : ''}</div>
+                    <div style="font-size:12px;color:var(--text-muted)">${s.task.folder} / ${s.task.list}</div>
+                </div>
+                <div style="text-align:right">
+                    <div class="assign-to">→ ${s.suggested_assignee}</div>
+                    <div style="font-size:11px;color:var(--text-muted)">${s.remaining_after} pts remaining</div>
+                </div>
+            </div>
+        `).join('') : '<p style="color:var(--text-muted)">No suggestions — team is at capacity or backlog is empty.</p>';
+
+        // History chart
+        const ctx2 = document.getElementById('historyChart').getContext('2d');
+        if (historyChart) historyChart.destroy();
+        historyChart = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: data.history.map(h => h.week),
+                datasets: [
+                    { label: 'Planned', data: data.history.map(h => h.planned_points), backgroundColor: 'rgba(232,90,113,0.3)', borderColor: 'rgba(232,90,113,0.8)', borderWidth: 1 },
+                    { label: 'Actual', data: data.history.map(h => h.actual_points), backgroundColor: 'rgba(74,222,128,0.3)', borderColor: 'rgba(74,222,128,0.8)', borderWidth: 1 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8B95A5' } } },
+                scales: { x: { ticks: { color: '#8B95A5' }, grid: { color: 'rgba(42,51,68,0.5)' } }, y: { ticks: { color: '#8B95A5' }, grid: { color: 'rgba(42,51,68,0.5)' }, beginAtZero: true } }
+            }
+        });
+
+        // History table
+        document.getElementById('historyTable').innerHTML = data.history.map(h => `<tr>
+            <td>${h.week}</td>
+            <td>${h.planned_points}</td>
+            <td>${h.actual_points}</td>
+            <td>${h.tasks_completed}</td>
+            <td><span class="badge ${h.completion_rate >= 80 ? 'badge-green' : h.completion_rate >= 50 ? 'badge-yellow' : 'badge-red'}">${h.completion_rate}%</span></td>
+        </tr>`).join('');
+    }
+
+    loadData();
+    </script>
+</body>
+</html>
