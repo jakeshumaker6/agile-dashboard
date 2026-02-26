@@ -1034,7 +1034,7 @@
         <header>
             <div class="logo-section">
                 <button class="hamburger" onclick="toggleSidebar()">☰</button>
-                <img src="/static/logo.jpeg" alt="Pulse" class="logo-img">
+                <a href="/"><img src="/static/logo.jpeg" alt="Pulse" class="logo-img" style="cursor: pointer;"></a>
             </div>
             <div class="controls">
                 <div class="week-nav">
@@ -1348,37 +1348,59 @@
         // Tab switching
         let teamDataLoaded = false;
         function switchTab(tab) {
+            console.log('Switching to tab:', tab);
+
             // Update tab buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
+            document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+                btn.classList.remove('active');
+                if ((tab === 'sprint' && i === 0) || (tab === 'team' && i === 1)) {
+                    btn.classList.add('active');
+                }
+            });
 
             // Update tab content
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById(tab === 'sprint' ? 'sprintTab' : 'teamTab').classList.add('active');
+            const sprintTab = document.getElementById('sprintTab');
+            const teamTab = document.getElementById('teamTab');
 
-            // Show/hide sprint controls
-            document.querySelector('.controls').style.display = tab === 'sprint' ? 'flex' : 'none';
+            if (tab === 'sprint') {
+                sprintTab.classList.add('active');
+                teamTab.classList.remove('active');
+                document.querySelector('.controls').style.display = 'flex';
+            } else {
+                sprintTab.classList.remove('active');
+                teamTab.classList.add('active');
+                document.querySelector('.controls').style.display = 'none';
 
-            // Load team performance data if needed
-            if (tab === 'team' && !teamDataLoaded) {
-                loadTeamPerformance();
+                // Load team performance data if needed
+                if (!teamDataLoaded) {
+                    loadTeamPerformance();
+                }
             }
         }
 
         let teamCharts = {};
         async function loadTeamPerformance() {
+            console.log('Loading team performance data...');
             try {
                 const response = await fetch('/api/team-performance');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
-                teamDataLoaded = true;
+                console.log('Team performance data loaded:', data);
 
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                teamDataLoaded = true;
                 document.getElementById('teamPerformanceLoading').style.display = 'none';
                 document.getElementById('teamPerformanceContent').style.display = 'block';
 
                 renderTeamPerformance(data);
             } catch (error) {
                 console.error('Error loading team performance:', error);
-                document.getElementById('teamPerformanceLoading').innerHTML = 'Error loading team data. Please refresh.';
+                document.getElementById('teamPerformanceLoading').innerHTML = '<span style="color: var(--danger);">Error loading team data: ' + error.message + '</span><br><button onclick="teamDataLoaded=false;loadTeamPerformance();" style="margin-top:12px;padding:8px 16px;background:var(--pulse-primary);color:white;border:none;border-radius:6px;cursor:pointer;">Retry</button>';
             }
         }
 
