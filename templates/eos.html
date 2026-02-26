@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EOS Tools — Pulse</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --pulse-navy: #0f1a2e;
+            --pulse-primary: #4f46e5;
+            --pulse-primary-hover: #4338ca;
+            --bg: #0d1117;
+            --card-bg: #161b22;
+            --card-border: #30363d;
+            --text: #c9d1d9;
+            --text-muted: #8b949e;
+            --green: #3fb950;
+            --red: #f85149;
+            --yellow: #d29922;
+            --blue: #58a6ff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* Sidebar */
+        .sidebar { position: fixed; top: 0; left: -280px; width: 280px; height: 100vh; background: var(--pulse-navy); transition: left 0.3s ease; z-index: 999; padding: 24px 0; }
+        .sidebar.open { left: 0; }
+        .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 998; display: none; }
+        .sidebar-overlay.visible { display: block; }
+        .sidebar-brand { padding: 0 24px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-brand img { height: 36px; border-radius: 6px; }
+        .sidebar-brand span { font-size: 16px; font-weight: 600; color: #fff; }
+        .sidebar-item { padding: 12px 24px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px; font-size: 14px; transition: background 0.2s; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-item.active { background: var(--pulse-primary); color: white; }
+
+        /* Header */
+        .header { display: flex; align-items: center; gap: 16px; padding: 20px 24px; }
+        .menu-btn { background: var(--card-bg); border: 1px solid var(--card-border); color: var(--text); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+        .header h1 { font-size: 24px; font-weight: 700; }
+
+        /* Sub-nav */
+        .sub-nav { display: flex; gap: 4px; padding: 0 24px 20px; flex-wrap: wrap; }
+        .sub-nav a { padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 500; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--card-border); transition: all 0.2s; }
+        .sub-nav a:hover { color: var(--text); border-color: var(--text-muted); }
+        .sub-nav a.active { background: var(--pulse-primary); color: white; border-color: var(--pulse-primary); }
+        .sub-nav .badge { background: var(--red); color: white; font-size: 11px; padding: 1px 6px; border-radius: 10px; margin-left: 4px; }
+
+        /* Container */
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px 40px; }
+
+        /* Cards */
+        .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+
+        /* Grid */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+        /* Buttons */
+        .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: var(--pulse-primary); color: white; }
+        .btn-primary:hover { background: var(--pulse-primary-hover); }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--card-border); }
+        .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+        .btn-danger { background: var(--red); color: white; }
+        .btn-danger:hover { opacity: 0.8; }
+        .btn-success { background: var(--green); color: white; }
+
+        /* Forms */
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
+        .form-control { width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit; }
+        .form-control:focus { outline: none; border-color: var(--pulse-primary); }
+        select.form-control { appearance: none; }
+        textarea.form-control { resize: vertical; min-height: 80px; }
+
+        /* Modal */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px; width: 90%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
+        .modal h2 { font-size: 18px; margin-bottom: 16px; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+        /* Status badges */
+        .status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+        .status-on_track { background: rgba(63,185,80,0.15); color: var(--green); }
+        .status-off_track { background: rgba(248,81,73,0.15); color: var(--red); }
+        .status-done { background: rgba(88,166,255,0.15); color: var(--blue); }
+        .status-dropped { background: rgba(139,148,158,0.15); color: var(--text-muted); }
+        .status-open { background: rgba(210,153,34,0.15); color: var(--yellow); }
+        .status-resolved { background: rgba(63,185,80,0.15); color: var(--green); }
+
+        /* Avatar */
+        .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--pulse-primary); color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+
+        /* Rock cards */
+        .rock-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; transition: border-color 0.2s; }
+        .rock-card:hover { border-color: var(--text-muted); }
+        .rock-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+        .rock-title { font-weight: 600; font-size: 14px; flex: 1; }
+        .rock-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+        .rock-actions { display: flex; gap: 4px; }
+        .rock-actions button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+        .rock-actions button:hover { background: rgba(255,255,255,0.1); }
+
+        /* Issue rows */
+        .issue-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--card-border); transition: background 0.2s; }
+        .issue-row:hover { background: rgba(255,255,255,0.02); }
+        .issue-row:last-child { border-bottom: none; }
+        .issue-priority { font-size: 12px; font-weight: 600; color: var(--text-muted); min-width: 24px; }
+        .issue-title { flex: 1; font-size: 14px; }
+        .issue-owner { font-size: 12px; color: var(--text-muted); }
+
+        /* VTO */
+        .vto-section { border-left: 3px solid var(--pulse-primary); padding-left: 16px; margin-bottom: 24px; }
+        .vto-section h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+        .vto-content { font-size: 14px; line-height: 1.6; color: var(--text); min-height: 40px; cursor: pointer; padding: 8px; border-radius: 6px; transition: background 0.2s; white-space: pre-wrap; }
+        .vto-content:hover { background: rgba(255,255,255,0.03); }
+        .vto-content.empty { color: var(--text-muted); font-style: italic; }
+        .vto-edit { display: none; }
+        .vto-edit textarea { width: 100%; min-height: 100px; }
+
+        /* Scorecard table */
+        .scorecard-wrap { overflow-x: auto; }
+        .scorecard-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .scorecard-table th, .scorecard-table td { padding: 8px 10px; border: 1px solid var(--card-border); text-align: center; white-space: nowrap; }
+        .scorecard-table th { background: var(--pulse-navy); font-weight: 600; position: sticky; top: 0; }
+        .scorecard-table td.metric-name { text-align: left; font-weight: 500; min-width: 160px; }
+        .scorecard-table td.on-track { background: rgba(63,185,80,0.15); color: var(--green); }
+        .scorecard-table td.off-track { background: rgba(248,81,73,0.15); color: var(--red); }
+        .scorecard-table input { background: transparent; border: none; color: inherit; text-align: center; width: 60px; font-size: 13px; font-family: inherit; }
+        .scorecard-table input:focus { outline: 1px solid var(--pulse-primary); border-radius: 4px; }
+
+        /* Todo */
+        .todo-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--card-border); }
+        .todo-item:last-child { border-bottom: none; }
+        .todo-check { width: 20px; height: 20px; border: 2px solid var(--card-border); border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
+        .todo-check:hover { border-color: var(--green); }
+        .todo-check.done { background: var(--green); border-color: var(--green); }
+        .todo-check.done::after { content: '✓'; color: white; font-size: 12px; }
+        .todo-title { flex: 1; font-size: 14px; }
+        .todo-title.done { text-decoration: line-through; color: var(--text-muted); }
+        .todo-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.05); color: var(--text-muted); }
+
+        /* Hub cards */
+        .hub-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px; text-decoration: none; color: var(--text); transition: all 0.2s; display: block; }
+        .hub-card:hover { border-color: var(--pulse-primary); transform: translateY(-2px); }
+        .hub-card .icon { font-size: 32px; margin-bottom: 12px; }
+        .hub-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+        .hub-card p { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+        .hub-stat { font-size: 28px; font-weight: 700; color: var(--pulse-primary); margin-top: 12px; }
+
+        /* Summary bar */
+        .summary-bar { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .summary-stat { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 20px; }
+        .summary-stat .label { font-size: 12px; color: var(--text-muted); }
+        .summary-stat .value { font-size: 22px; font-weight: 700; }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
+        .empty-state p { font-size: 14px; margin-bottom: 20px; }
+
+        /* Filter bar */
+        .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+        .filter-bar select { padding: 6px 12px; font-size: 13px; }
+
+        /* Print */
+        @media print {
+            .sidebar, .sidebar-overlay, .header, .sub-nav, .menu-btn, .btn, .rock-actions { display: none !important; }
+            body { background: white; color: #000; }
+            .card, .rock-card, .vto-section { border-color: #ddd; }
+            .container { max-width: 100%; }
+        }
+
+        /* IDS hint */
+        .ids-hint { background: rgba(79,70,229,0.1); border: 1px solid rgba(79,70,229,0.3); border-radius: 8px; padding: 10px 16px; font-size: 13px; color: var(--blue); margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <img src="/static/logo.jpeg" alt="Pulse">
+            <span>Pulse</span>
+        </div>
+        <a href="/" class="sidebar-item">Sprint Dashboard</a>
+        <a href="/client-health" class="sidebar-item">Client Health</a>
+        {% if session.role == 'admin' %}
+        <a href="/client-mapping" class="sidebar-item">Client Mapping</a>
+        <a href="/team-performance" class="sidebar-item">Team Performance</a>
+        <a href="/eos" class="sidebar-item active">🎯 EOS Tools</a>
+        <a href="/admin/users" class="sidebar-item">User Management</a>
+        {% endif %}
+        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <a href="/settings" class="sidebar-item">Settings</a>
+            <a href="/logout" class="sidebar-item">Logout</a>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <div class="header">
+        <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+        <h1>🎯 EOS Tools</h1>
+    </div>
+
+    <!-- Sub-navigation -->
+    <div class="sub-nav">
+        <a href="/eos" class="{% if page == 'hub' %}active{% endif %}">Overview</a>
+        <a href="/eos/rocks" class="{% if page == 'rocks' %}active{% endif %}">🪨 Rocks</a>
+        <a href="/eos/issues" class="{% if page == 'issues' %}active{% endif %}">⚡ Issues <span class="badge" id="issuesBadge" style="display:none"></span></a>
+        <a href="/eos/vto" class="{% if page == 'vto' %}active{% endif %}">🔭 V/TO</a>
+        <a href="/eos/scorecard" class="{% if page == 'scorecard' %}active{% endif %}">📊 Scorecard</a>
+        <a href="/eos/todos" class="{% if page == 'todos' %}active{% endif %}">✅ To-Dos</a>
+    </div>
+
+    <div class="container">
+        <!-- ======================== HUB ======================== -->
+        {% if page == 'hub' %}
+        <div class="grid-3" id="hubGrid">
+            <a href="/eos/rocks" class="hub-card">
+                <div class="icon">🪨</div>
+                <h3>Rocks</h3>
+                <p>Quarterly goals — the 3-7 most important things to accomplish this quarter.</p>
+                <div class="hub-stat" id="hubRocksStat">—</div>
+            </a>
+            <a href="/eos/issues" class="hub-card">
+                <div class="icon">⚡</div>
+                <h3>Issues List</h3>
+                <p>Identify, Discuss, Solve. Track short-term and long-term issues.</p>
+                <div class="hub-stat" id="hubIssuesStat">—</div>
+            </a>
+            <a href="/eos/vto" class="hub-card">
+                <div class="icon">🔭</div>
+                <h3>V/TO</h3>
+                <p>Vision/Traction Organizer — your company's vision on two pages.</p>
+                <div class="hub-stat" style="font-size:14px;color:var(--text-muted)">View & Edit →</div>
+            </a>
+            <a href="/eos/scorecard" class="hub-card">
+                <div class="icon">📊</div>
+                <h3>Scorecard</h3>
+                <p>Weekly measurables — 5-15 numbers that tell you how the business is doing.</p>
+                <div class="hub-stat" id="hubScorecardStat">—</div>
+            </a>
+            <a href="/eos/todos" class="hub-card">
+                <div class="icon">✅</div>
+                <h3>To-Do List</h3>
+                <p>7-day action items. What did you commit to getting done this week?</p>
+                <div class="hub-stat" id="hubTodosStat">—</div>
+            </a>
+        </div>
+        {% endif %}
+
+        <!-- ======================== ROCKS ======================== -->
+        {% if page == 'rocks' %}
+        <div class="filter-bar">
+            <select class="form-control" id="rockQuarterFilter" style="width:auto">
+                <option value="{{ current_quarter }}">{{ current_quarter }}</option>
+            </select>
+            <select class="form-control" id="rockOwnerFilter" style="width:auto">
+                <option value="">All Owners</option>
+                {% for m in team_members %}
+                <option value="{{ m }}">{{ m }}</option>
+                {% endfor %}
+            </select>
+            <select class="form-control" id="rockStatusFilter" style="width:auto">
+                <option value="">All Statuses</option>
+                <option value="on_track">On Track</option>
+                <option value="off_track">Off Track</option>
+                <option value="done">Done</option>
+                <option value="dropped">Dropped</option>
+            </select>
+            <div style="flex:1"></div>
+            <button class="btn btn-primary" onclick="openRockModal()">+ Add Rock</button>
+        </div>
+        <div class="summary-bar" id="rocksSummary"></div>
+        <div class="grid-2" id="rocksGrid"></div>
+        {% endif %}
+
+        <!-- ======================== ISSUES ======================== -->
+        {% if page == 'issues' %}
+        <div class="ids-hint">💡 <strong>IDS Process:</strong> Identify the real issue → Discuss it openly → Solve it (assign a to-do)</div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+            <button class="btn btn-primary" onclick="openIssueModal()">+ Add Issue</button>
+        </div>
+        <div class="grid-2">
+            <div>
+                <div class="card">
+                    <h3>⚡ Short-Term <span style="color:var(--text-muted);font-weight:400">(this quarter)</span></h3>
+                    <div id="issuesShortTerm"></div>
+                </div>
+            </div>
+            <div>
+                <div class="card">
+                    <h3>🔮 Long-Term <span style="color:var(--text-muted);font-weight:400">(strategic)</span></h3>
+                    <div id="issuesLongTerm"></div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ======================== V/TO ======================== -->
+        {% if page == 'vto' %}
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+            <button class="btn btn-ghost" onclick="window.print()">🖨️ Print</button>
+        </div>
+        <div id="vtoContainer">
+            <div class="grid-2">
+                <div>
+                    <div class="vto-section" data-section="core_values">
+                        <h3>Core Values</h3>
+                        <div class="vto-content empty" onclick="editVto(this)">Click to add your core values...</div>
+                        <div class="vto-edit">
+                            <textarea class="form-control" placeholder="Enter each value on a new line"></textarea>
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="btn btn-primary btn-sm" onclick="saveVto(this)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="cancelVto(this)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="vto-section" data-section="core_focus">
+                        <h3>Core Focus</h3>
+                        <div class="vto-content empty" onclick="editVto(this)">Purpose/Cause/Passion & Niche...</div>
+                        <div class="vto-edit">
+                            <textarea class="form-control" placeholder="Purpose/Cause/Passion:&#10;Niche:"></textarea>
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="btn btn-primary btn-sm" onclick="saveVto(this)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="cancelVto(this)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="vto-section" data-section="ten_year_target">
+                        <h3>10-Year Target™</h3>
+                        <div class="vto-content empty" onclick="editVto(this)">What does the company look like in 10 years?</div>
+                        <div class="vto-edit">
+                            <textarea class="form-control" placeholder="Your 10-year target..."></textarea>
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="btn btn-primary btn-sm" onclick="saveVto(this)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="cancelVto(this)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="vto-section" data-section="marketing_strategy">
+                        <h3>Marketing Strategy</h3>
+                        <div class="vto-content empty" onclick="editVto(this)">Target Market, 3 Uniques, Proven Process, Guarantee...</div>
+                        <div class="vto-edit">
+                            <textarea class="form-control" placeholder="Target Market:&#10;3 Uniques:&#10;1.&#10;2.&#10;3.&#10;Proven Process:&#10;Guarantee:"></textarea>
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="btn btn-primary btn-sm" onclick="saveVto(this)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="cancelVto(this)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="vto-section" data-section="three_year_picture">
+                        <h3>3-Year Picture™</h3>
+                        <div class="vto-content empty" onclick="editVto(this)">Revenue, profit, measurables, what does it look like?</div>
+                        <div class="vto-edit">
+                            <textarea class="form-control" placeholder="Revenue:&#10;Profit:&#10;Measurables:&#10;What does it look like?"></textarea>
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="btn btn-primary btn-sm" onclick="saveVto(this)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="cancelVto(this)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="vto-section" data-section="one_year_plan">
+                        <h3>1-Year Plan</h3>
+                        <div class="vto-content empty" onclick="editVto(this)">Revenue goal, profit goal, measurables, goals for the year...</div>
+                        <div class="vto-edit">
+                            <textarea class="form-control" placeholder="Revenue:&#10;Profit:&#10;Goals:"></textarea>
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="btn btn-primary btn-sm" onclick="saveVto(this)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="cancelVto(this)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="vto-section" data-section="quarterly_rocks_summary">
+                        <h3>Quarterly Rocks Summary</h3>
+                        <div class="vto-content empty" onclick="editVto(this)">Summary of this quarter's rocks...</div>
+                        <div class="vto-edit">
+                            <textarea class="form-control" placeholder="Rocks summary for this quarter..."></textarea>
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="btn btn-primary btn-sm" onclick="saveVto(this)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="cancelVto(this)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ======================== SCORECARD ======================== -->
+        {% if page == 'scorecard' %}
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+            <button class="btn btn-primary" onclick="openMetricModal()">+ Add Measurable</button>
+        </div>
+        <div id="scorecardContainer">
+            <div class="empty-state" id="scorecardEmpty">
+                <div class="icon">📊</div>
+                <h3>Set up your first measurable</h3>
+                <p>Add 5-15 weekly numbers that tell you how the business is doing. Think: leads, revenue, client satisfaction, project completion rate.</p>
+                <button class="btn btn-primary" onclick="openMetricModal()">+ Add Measurable</button>
+            </div>
+            <div class="scorecard-wrap" id="scorecardTable" style="display:none"></div>
+        </div>
+        {% endif %}
+
+        <!-- ======================== TODOS ======================== -->
+        {% if page == 'todos' %}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="display:flex;gap:8px;align-items:center">
+                <select class="form-control" id="todoStatusFilter" style="width:auto" onchange="loadTodos()">
+                    <option value="open">Open</option>
+                    <option value="done">Completed</option>
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="openTodoModal()">+ Add To-Do</button>
+        </div>
+        <div class="card">
+            <div id="todosList"></div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ======================== MODALS ======================== -->
+    <!-- Rock Modal -->
+    <div class="modal-overlay" id="rockModal">
+        <div class="modal">
+            <h2 id="rockModalTitle">Add Rock</h2>
+            <input type="hidden" id="rockEditId">
+            <div class="form-group">
+                <label>Title *</label>
+                <input class="form-control" id="rockTitle" placeholder="e.g., Launch new client onboarding process">
+            </div>
+            <div class="form-group">
+                <label>Owner *</label>
+                <select class="form-control" id="rockOwner">
+                    {% for m in team_members %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Quarter</label>
+                <input class="form-control" id="rockQuarter" value="{{ current_quarter }}">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select class="form-control" id="rockStatus">
+                    <option value="on_track">On Track</option>
+                    <option value="off_track">Off Track</option>
+                    <option value="done">Done</option>
+                    <option value="dropped">Dropped</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea class="form-control" id="rockDescription" placeholder="Details about this rock..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Due Date</label>
+                <input class="form-control" type="date" id="rockDueDate">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeModal('rockModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveRock()">Save Rock</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Issue Modal -->
+    <div class="modal-overlay" id="issueModal">
+        <div class="modal">
+            <h2 id="issueModalTitle">Add Issue</h2>
+            <input type="hidden" id="issueEditId">
+            <div class="form-group">
+                <label>Issue *</label>
+                <input class="form-control" id="issueTitle" placeholder="What's the issue?">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea class="form-control" id="issueDescription" placeholder="More details..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select class="form-control" id="issueCategory">
+                    <option value="short_term">Short-Term (this quarter)</option>
+                    <option value="long_term">Long-Term (strategic)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Owner</label>
+                <select class="form-control" id="issueOwner">
+                    <option value="">Unassigned</option>
+                    {% for m in team_members %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Priority (higher = more important)</label>
+                <input class="form-control" type="number" id="issuePriority" value="0" min="0">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeModal('issueModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveIssue()">Save Issue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resolve Issue Modal -->
+    <div class="modal-overlay" id="resolveModal">
+        <div class="modal">
+            <h2>Resolve Issue</h2>
+            <input type="hidden" id="resolveIssueId">
+            <div class="form-group">
+                <label>Resolution Notes</label>
+                <textarea class="form-control" id="resolveNotes" placeholder="How was this resolved? Any to-dos created?"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeModal('resolveModal')">Cancel</button>
+                <button class="btn btn-success" onclick="resolveIssue()">✓ Resolve</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metric Modal -->
+    <div class="modal-overlay" id="metricModal">
+        <div class="modal">
+            <h2 id="metricModalTitle">Add Measurable</h2>
+            <input type="hidden" id="metricEditId">
+            <div class="form-group">
+                <label>Name *</label>
+                <input class="form-control" id="metricName" placeholder="e.g., Weekly Revenue, New Leads">
+            </div>
+            <div class="form-group">
+                <label>Owner *</label>
+                <select class="form-control" id="metricOwner">
+                    {% for m in team_members %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Goal / Target</label>
+                <input class="form-control" id="metricGoal" placeholder="e.g., ≥ 10, $50,000">
+            </div>
+            <div class="form-group">
+                <label>Frequency</label>
+                <select class="form-control" id="metricFrequency">
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <input class="form-control" id="metricCategory" placeholder="e.g., Sales, Operations">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeModal('metricModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveMetric()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Todo Modal -->
+    <div class="modal-overlay" id="todoModal">
+        <div class="modal">
+            <h2>Add To-Do</h2>
+            <div class="form-group">
+                <label>What needs to get done? *</label>
+                <input class="form-control" id="todoTitle" placeholder="Action item...">
+            </div>
+            <div class="form-group">
+                <label>Owner *</label>
+                <select class="form-control" id="todoOwner">
+                    {% for m in team_members %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Due Date</label>
+                <input class="form-control" type="date" id="todoDueDate">
+            </div>
+            <div class="form-group">
+                <label>Source</label>
+                <select class="form-control" id="todoSource">
+                    <option value="manual">Manual</option>
+                    <option value="l10">L10 Meeting</option>
+                    <option value="grain">Grain Recording</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeModal('todoModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveTodo()">Add To-Do</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <h2>Confirm Delete</h2>
+            <p id="confirmMessage" style="margin-bottom:16px;color:var(--text-muted)">Are you sure?</p>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeModal('confirmModal')">Cancel</button>
+                <button class="btn btn-danger" id="confirmBtn" onclick="">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ========== Helpers ==========
+    const API = '/api/eos';
+    const QUARTER = '{{ current_quarter }}';
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('visible'); }
+    function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('visible'); }
+
+    function openModal(id) { document.getElementById(id).classList.add('show'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+    function initials(name) {
+        if (!name) return '?';
+        return name.split(' ').map(n => n[0]).join('').toUpperCase();
+    }
+
+    const statusLabels = { on_track: 'On Track', off_track: 'Off Track', done: 'Done', dropped: 'Dropped', open: 'Open', resolved: 'Resolved' };
+    const statusIcons = { on_track: '🟢', off_track: '🔴', done: '✅', dropped: '⚫' };
+
+    async function api(path, opts = {}) {
+        const res = await fetch(API + path, {
+            method: opts.method || 'GET',
+            headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+            body: opts.body ? JSON.stringify(opts.body) : undefined
+        });
+        return res.json();
+    }
+
+    function confirmDelete(msg, callback) {
+        document.getElementById('confirmMessage').textContent = msg;
+        document.getElementById('confirmBtn').onclick = () => { closeModal('confirmModal'); callback(); };
+        openModal('confirmModal');
+    }
+
+    // ========== ROCKS ==========
+    {% if page == 'rocks' %}
+    async function loadRocks() {
+        const q = document.getElementById('rockQuarterFilter').value;
+        const owner = document.getElementById('rockOwnerFilter').value;
+        const status = document.getElementById('rockStatusFilter').value;
+        let url = `/rocks?quarter=${encodeURIComponent(q)}`;
+        if (owner) url += `&owner=${encodeURIComponent(owner)}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
+        const rocks = await api(url);
+        renderRocks(rocks);
+    }
+
+    function renderRocks(rocks) {
+        const grid = document.getElementById('rocksGrid');
+        const summary = document.getElementById('rocksSummary');
+        const total = rocks.length;
+        const onTrack = rocks.filter(r => r.status === 'on_track').length;
+        const done = rocks.filter(r => r.status === 'done').length;
+        const offTrack = rocks.filter(r => r.status === 'off_track').length;
+
+        summary.innerHTML = `
+            <div class="summary-stat"><div class="label">Total Rocks</div><div class="value">${total}</div></div>
+            <div class="summary-stat"><div class="label">On Track</div><div class="value" style="color:var(--green)">${onTrack}</div></div>
+            <div class="summary-stat"><div class="label">Done</div><div class="value" style="color:var(--blue)">${done}</div></div>
+            <div class="summary-stat"><div class="label">Off Track</div><div class="value" style="color:var(--red)">${offTrack}</div></div>
+        `;
+
+        if (total === 0) {
+            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="icon">🪨</div><h3>No rocks yet</h3><p>Add your first quarterly rock to get started.</p><button class="btn btn-primary" onclick="openRockModal()">+ Add Rock</button></div>`;
+            return;
+        }
+        grid.innerHTML = rocks.map(r => `
+            <div class="rock-card">
+                <div class="rock-header">
+                    <div class="rock-title">${r.title}</div>
+                    <div class="rock-actions">
+                        <button onclick="editRock(${r.id})" title="Edit">✏️</button>
+                        <button onclick="confirmDelete('Delete this rock?', () => deleteRock(${r.id}))" title="Delete">🗑️</button>
+                    </div>
+                </div>
+                ${r.description ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">${r.description}</div>` : ''}
+                <div class="rock-meta">
+                    <span class="avatar">${initials(r.owner)}</span>
+                    <span>${r.owner}</span>
+                    <span>•</span>
+                    <span class="status-badge status-${r.status}" style="cursor:pointer" onclick="cycleRockStatus(${r.id}, '${r.status}')">${statusIcons[r.status] || ''} ${statusLabels[r.status]}</span>
+                    ${r.due_date ? `<span>• Due ${r.due_date}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function cycleRockStatus(id, current) {
+        const order = ['on_track', 'off_track', 'done', 'dropped'];
+        const next = order[(order.indexOf(current) + 1) % order.length];
+        await api(`/rocks/${id}`, { method: 'PUT', body: { status: next } });
+        loadRocks();
+    }
+
+    function openRockModal(rock = null) {
+        document.getElementById('rockModalTitle').textContent = rock ? 'Edit Rock' : 'Add Rock';
+        document.getElementById('rockEditId').value = rock ? rock.id : '';
+        document.getElementById('rockTitle').value = rock ? rock.title : '';
+        document.getElementById('rockOwner').value = rock ? rock.owner : '{{ team_members[0] }}';
+        document.getElementById('rockQuarter').value = rock ? rock.quarter : QUARTER;
+        document.getElementById('rockStatus').value = rock ? rock.status : 'on_track';
+        document.getElementById('rockDescription').value = rock ? (rock.description || '') : '';
+        document.getElementById('rockDueDate').value = rock ? (rock.due_date || '') : '';
+        openModal('rockModal');
+    }
+
+    async function editRock(id) {
+        const rocks = await api(`/rocks?quarter=`);
+        // fetch all to find it
+        const allRocks = await fetch(API + `/rocks?quarter=${encodeURIComponent(document.getElementById('rockQuarterFilter').value)}`).then(r => r.json());
+        const rock = allRocks.find(r => r.id === id);
+        if (rock) openRockModal(rock);
+    }
+
+    async function saveRock() {
+        const id = document.getElementById('rockEditId').value;
+        const body = {
+            title: document.getElementById('rockTitle').value,
+            owner: document.getElementById('rockOwner').value,
+            quarter: document.getElementById('rockQuarter').value,
+            status: document.getElementById('rockStatus').value,
+            description: document.getElementById('rockDescription').value,
+            due_date: document.getElementById('rockDueDate').value
+        };
+        if (!body.title) return alert('Title is required');
+        if (id) {
+            await api(`/rocks/${id}`, { method: 'PUT', body });
+        } else {
+            await api('/rocks', { method: 'POST', body });
+        }
+        closeModal('rockModal');
+        loadRocks();
+    }
+
+    async function deleteRock(id) {
+        await api(`/rocks/${id}`, { method: 'DELETE' });
+        loadRocks();
+    }
+
+    // Quarter dropdown - populate surrounding quarters
+    (function() {
+        const sel = document.getElementById('rockQuarterFilter');
+        const now = new Date();
+        const quarters = [];
+        for (let offset = -2; offset <= 2; offset++) {
+            const d = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
+            const q = Math.ceil((d.getMonth() + 1) / 3);
+            quarters.push(`Q${q} ${d.getFullYear()}`);
+        }
+        const unique = [...new Set(quarters)];
+        sel.innerHTML = unique.map(q => `<option value="${q}" ${q === QUARTER ? 'selected' : ''}>${q}</option>`).join('');
+    })();
+
+    document.getElementById('rockQuarterFilter').onchange = loadRocks;
+    document.getElementById('rockOwnerFilter').onchange = loadRocks;
+    document.getElementById('rockStatusFilter').onchange = loadRocks;
+    loadRocks();
+    {% endif %}
+
+    // ========== ISSUES ==========
+    {% if page == 'issues' %}
+    async function loadIssues() {
+        const [shortTerm, longTerm] = await Promise.all([
+            api('/issues?category=short_term&status=open'),
+            api('/issues?category=long_term&status=open')
+        ]);
+        renderIssues('issuesShortTerm', shortTerm);
+        renderIssues('issuesLongTerm', longTerm);
+        const total = shortTerm.length + longTerm.length;
+        const badge = document.getElementById('issuesBadge');
+        if (badge && total > 0) { badge.textContent = total; badge.style.display = 'inline'; }
+    }
+
+    function renderIssues(containerId, issues) {
+        const el = document.getElementById(containerId);
+        if (issues.length === 0) {
+            el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">No open issues 🎉</div>';
+            return;
+        }
+        el.innerHTML = issues.map((iss, i) => `
+            <div class="issue-row">
+                <span class="issue-priority">${iss.priority || (i + 1)}</span>
+                <span class="issue-title">${iss.title}${iss.description ? `<br><small style="color:var(--text-muted)">${iss.description}</small>` : ''}</span>
+                ${iss.owner ? `<span class="avatar" style="font-size:10px" title="${iss.owner}">${initials(iss.owner)}</span>` : ''}
+                <button class="btn btn-sm btn-success" onclick="openResolveModal(${iss.id})" title="Resolve">✓</button>
+                <button class="btn btn-sm btn-ghost" onclick="editIssue(${iss.id})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="confirmDelete('Delete this issue?', () => deleteIssue(${iss.id}))" title="Delete">🗑️</button>
+            </div>
+        `).join('');
+    }
+
+    function openIssueModal(issue = null) {
+        document.getElementById('issueModalTitle').textContent = issue ? 'Edit Issue' : 'Add Issue';
+        document.getElementById('issueEditId').value = issue ? issue.id : '';
+        document.getElementById('issueTitle').value = issue ? issue.title : '';
+        document.getElementById('issueDescription').value = issue ? (issue.description || '') : '';
+        document.getElementById('issueCategory').value = issue ? issue.category : 'short_term';
+        document.getElementById('issueOwner').value = issue ? (issue.owner || '') : '';
+        document.getElementById('issuePriority').value = issue ? issue.priority : 0;
+        openModal('issueModal');
+    }
+
+    async function editIssue(id) {
+        const all = await api('/issues?status=open');
+        const iss = all.find(i => i.id === id);
+        if (iss) openIssueModal(iss);
+    }
+
+    async function saveIssue() {
+        const id = document.getElementById('issueEditId').value;
+        const body = {
+            title: document.getElementById('issueTitle').value,
+            description: document.getElementById('issueDescription').value,
+            category: document.getElementById('issueCategory').value,
+            owner: document.getElementById('issueOwner').value,
+            priority: parseInt(document.getElementById('issuePriority').value) || 0
+        };
+        if (!body.title) return alert('Title is required');
+        if (id) {
+            await api(`/issues/${id}`, { method: 'PUT', body });
+        } else {
+            await api('/issues', { method: 'POST', body });
+        }
+        closeModal('issueModal');
+        loadIssues();
+    }
+
+    function openResolveModal(id) {
+        document.getElementById('resolveIssueId').value = id;
+        document.getElementById('resolveNotes').value = '';
+        openModal('resolveModal');
+    }
+
+    async function resolveIssue() {
+        const id = document.getElementById('resolveIssueId').value;
+        await api(`/issues/${id}`, { method: 'PUT', body: { status: 'resolved', resolution_notes: document.getElementById('resolveNotes').value } });
+        closeModal('resolveModal');
+        loadIssues();
+    }
+
+    async function deleteIssue(id) {
+        await api(`/issues/${id}`, { method: 'DELETE' });
+        loadIssues();
+    }
+
+    loadIssues();
+    {% endif %}
+
+    // ========== V/TO ==========
+    {% if page == 'vto' %}
+    async function loadVto() {
+        const sections = await api('/vto');
+        sections.forEach(s => {
+            const el = document.querySelector(`[data-section="${s.section}"]`);
+            if (!el) return;
+            const contentEl = el.querySelector('.vto-content');
+            const editEl = el.querySelector('.vto-edit textarea');
+            let text = '';
+            try {
+                const data = JSON.parse(s.content || '{}');
+                if (typeof data === 'string') text = data;
+                else if (data.text) text = data.text;
+                else if (Array.isArray(data.items)) text = data.items.join('\n');
+                else if (Object.keys(data).length > 0) text = Object.entries(data).map(([k,v]) => `${k}: ${v}`).join('\n');
+            } catch { text = s.content || ''; }
+            if (text) {
+                contentEl.textContent = text;
+                contentEl.classList.remove('empty');
+            }
+            editEl.value = text;
+        });
+    }
+
+    function editVto(el) {
+        const section = el.closest('.vto-section');
+        const editDiv = section.querySelector('.vto-edit');
+        const textarea = editDiv.querySelector('textarea');
+        if (!el.classList.contains('empty')) textarea.value = el.textContent;
+        el.style.display = 'none';
+        editDiv.style.display = 'block';
+        textarea.focus();
+    }
+
+    async function saveVto(btn) {
+        const section = btn.closest('.vto-section');
+        const sectionName = section.dataset.section;
+        const textarea = section.querySelector('.vto-edit textarea');
+        const text = textarea.value.trim();
+        const contentEl = section.querySelector('.vto-content');
+
+        await api(`/vto/${sectionName}`, { method: 'PUT', body: { content: { text } } });
+
+        contentEl.textContent = text || section.querySelector('.vto-content').getAttribute('data-placeholder') || 'Click to edit...';
+        contentEl.classList.toggle('empty', !text);
+        contentEl.style.display = 'block';
+        section.querySelector('.vto-edit').style.display = 'none';
+    }
+
+    function cancelVto(btn) {
+        const section = btn.closest('.vto-section');
+        section.querySelector('.vto-content').style.display = 'block';
+        section.querySelector('.vto-edit').style.display = 'none';
+    }
+
+    loadVto();
+    {% endif %}
+
+    // ========== SCORECARD ==========
+    {% if page == 'scorecard' %}
+    async function loadScorecard() {
+        const [metrics, entries] = await Promise.all([
+            api('/scorecard/metrics'),
+            api('/scorecard/entries')
+        ]);
+        if (metrics.length === 0) {
+            document.getElementById('scorecardEmpty').style.display = 'block';
+            document.getElementById('scorecardTable').style.display = 'none';
+            return;
+        }
+        document.getElementById('scorecardEmpty').style.display = 'none';
+        document.getElementById('scorecardTable').style.display = 'block';
+
+        // Build 13-week column headers
+        const weeks = [];
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+        for (let i = 12; i >= 0; i--) {
+            const d = new Date(monday);
+            d.setDate(monday.getDate() - i * 7);
+            weeks.push(d.toISOString().split('T')[0]);
+        }
+
+        // Map entries by metric+week
+        const entryMap = {};
+        entries.forEach(e => { entryMap[`${e.metric_id}_${e.week_start}`] = e; });
+
+        let html = '<table class="scorecard-table"><thead><tr><th>Measurable</th><th>Owner</th><th>Goal</th>';
+        weeks.forEach(w => {
+            const d = new Date(w);
+            html += `<th>${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        metrics.forEach(m => {
+            html += `<tr><td class="metric-name">${m.name} <button class="btn btn-sm btn-ghost" onclick="confirmDelete('Delete this measurable and all its data?', () => deleteMetric(${m.id}))" style="padding:2px 4px">🗑️</button></td><td>${initials(m.owner)}</td><td>${m.goal || '—'}</td>`;
+            weeks.forEach(w => {
+                const entry = entryMap[`${m.id}_${w}`];
+                const val = entry ? entry.value : '';
+                const trackClass = entry ? (entry.on_track ? 'on-track' : 'off-track') : '';
+                html += `<td class="${trackClass}"><input value="${val}" onchange="updateEntry(${m.id}, '${w}', this.value, '${m.goal || ''}')" placeholder="—"></td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('scorecardTable').innerHTML = html;
+    }
+
+    async function updateEntry(metricId, weekStart, value, goal) {
+        // Auto-determine on_track: simple numeric comparison if goal starts with >= or is a number
+        let onTrack = 1;
+        if (goal && value) {
+            const numVal = parseFloat(value.replace(/[^0-9.-]/g, ''));
+            const goalMatch = goal.match(/([><=]*)\s*([\d.]+)/);
+            if (goalMatch && !isNaN(numVal)) {
+                const goalNum = parseFloat(goalMatch[2]);
+                const op = goalMatch[1] || '>=';
+                if (op.includes('>')) onTrack = numVal >= goalNum ? 1 : 0;
+                else if (op.includes('<')) onTrack = numVal <= goalNum ? 1 : 0;
+                else onTrack = numVal >= goalNum ? 1 : 0;
+            }
+        }
+        await api('/scorecard/entries', { method: 'POST', body: { metric_id: metricId, week_start: weekStart, value, on_track: onTrack } });
+        loadScorecard();
+    }
+
+    function openMetricModal() { openModal('metricModal'); }
+
+    async function saveMetric() {
+        const body = {
+            name: document.getElementById('metricName').value,
+            owner: document.getElementById('metricOwner').value,
+            goal: document.getElementById('metricGoal').value,
+            frequency: document.getElementById('metricFrequency').value,
+            category: document.getElementById('metricCategory').value
+        };
+        if (!body.name) return alert('Name is required');
+        await api('/scorecard/metrics', { method: 'POST', body });
+        closeModal('metricModal');
+        document.getElementById('metricName').value = '';
+        document.getElementById('metricGoal').value = '';
+        document.getElementById('metricCategory').value = '';
+        loadScorecard();
+    }
+
+    async function deleteMetric(id) {
+        await api(`/scorecard/metrics/${id}`, { method: 'DELETE' });
+        loadScorecard();
+    }
+
+    loadScorecard();
+    {% endif %}
+
+    // ========== TODOS ==========
+    {% if page == 'todos' %}
+    async function loadTodos() {
+        const status = document.getElementById('todoStatusFilter').value;
+        const todos = await api(`/todos?status=${status}`);
+        const el = document.getElementById('todosList');
+        if (todos.length === 0) {
+            el.innerHTML = `<div class="empty-state"><div class="icon">✅</div><h3>No to-dos</h3><p>${status === 'open' ? 'All caught up! Add a new to-do to get started.' : 'No completed items.'}</p></div>`;
+            return;
+        }
+        el.innerHTML = todos.map(t => `
+            <div class="todo-item">
+                <div class="todo-check ${t.status === 'done' ? 'done' : ''}" onclick="toggleTodo(${t.id}, '${t.status}')"></div>
+                <span class="todo-title ${t.status === 'done' ? 'done' : ''}">${t.title}</span>
+                <span class="avatar" title="${t.owner}" style="font-size:10px">${initials(t.owner)}</span>
+                ${t.due_date ? `<span style="font-size:12px;color:var(--text-muted)">${t.due_date}</span>` : ''}
+                <span class="todo-tag">${t.source || 'manual'}</span>
+                <button class="btn btn-sm btn-ghost" onclick="confirmDelete('Delete this to-do?', () => deleteTodo(${t.id}))">🗑️</button>
+            </div>
+        `).join('');
+    }
+
+    async function toggleTodo(id, current) {
+        const newStatus = current === 'done' ? 'open' : 'done';
+        await api(`/todos/${id}`, { method: 'PUT', body: { status: newStatus } });
+        loadTodos();
+    }
+
+    function openTodoModal() {
+        document.getElementById('todoTitle').value = '';
+        const next7 = new Date(); next7.setDate(next7.getDate() + 7);
+        document.getElementById('todoDueDate').value = next7.toISOString().split('T')[0];
+        openModal('todoModal');
+    }
+
+    async function saveTodo() {
+        const body = {
+            title: document.getElementById('todoTitle').value,
+            owner: document.getElementById('todoOwner').value,
+            due_date: document.getElementById('todoDueDate').value,
+            source: document.getElementById('todoSource').value
+        };
+        if (!body.title) return alert('Title is required');
+        await api('/todos', { method: 'POST', body });
+        closeModal('todoModal');
+        loadTodos();
+    }
+
+    async function deleteTodo(id) {
+        await api(`/todos/${id}`, { method: 'DELETE' });
+        loadTodos();
+    }
+
+    loadTodos();
+    {% endif %}
+
+    // ========== HUB ==========
+    {% if page == 'hub' %}
+    async function loadHub() {
+        const [rocks, issues, metrics, todos] = await Promise.all([
+            api(`/rocks?quarter=${encodeURIComponent(QUARTER)}`),
+            api('/issues?status=open'),
+            api('/scorecard/metrics'),
+            api('/todos?status=open')
+        ]);
+        const onTrack = rocks.filter(r => r.status === 'on_track' || r.status === 'done').length;
+        document.getElementById('hubRocksStat').textContent = `${onTrack}/${rocks.length} on track`;
+        document.getElementById('hubIssuesStat').textContent = `${issues.length} open`;
+        document.getElementById('hubScorecardStat').textContent = metrics.length > 0 ? `${metrics.length} measurables` : 'Not set up';
+        document.getElementById('hubTodosStat').textContent = `${todos.length} open`;
+    }
+    loadHub();
+    {% endif %}
+
+    // Load issue badge on all pages
+    (async function() {
+        try {
+            const issues = await api('/issues?status=open');
+            const badge = document.getElementById('issuesBadge');
+            if (badge && issues.length > 0) { badge.textContent = issues.length; badge.style.display = 'inline'; }
+        } catch {}
+    })();
+    </script>
+</body>
+</html>

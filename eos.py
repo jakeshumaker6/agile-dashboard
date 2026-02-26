@@ -1,0 +1,470 @@
+"""
+EOS (Entrepreneurial Operating System) Module
+Rocks, Issues, V/TO, Scorecard, and To-Do management for Pulse Marketing.
+"""
+
+import os
+import json
+import sqlite3
+import logging
+from datetime import datetime, timedelta
+from flask import Blueprint, render_template, jsonify, request, session
+from auth import login_required, admin_required
+
+logger = logging.getLogger(__name__)
+
+eos_bp = Blueprint('eos', __name__)
+
+# ---------------------------------------------------------------------------
+# Database helpers
+# ---------------------------------------------------------------------------
+
+def _eos_db_path():
+    if os.path.isdir("/data"):
+        return "/data/eos.db"
+    return os.path.join(os.path.dirname(__file__), "eos.db")
+
+
+def _get_db():
+    conn = sqlite3.connect(_eos_db_path())
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def init_eos_db():
+    """Create EOS tables if they don't exist."""
+    conn = _get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS eos_rocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            quarter TEXT NOT NULL,
+            status TEXT DEFAULT 'on_track',
+            description TEXT,
+            due_date TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS eos_issues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            priority INTEGER DEFAULT 0,
+            category TEXT DEFAULT 'short_term',
+            status TEXT DEFAULT 'open',
+            owner TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP,
+            resolution_notes TEXT
+        );
+        CREATE TABLE IF NOT EXISTS eos_vto (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section TEXT NOT NULL UNIQUE,
+            content TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS eos_scorecard_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            goal TEXT,
+            frequency TEXT DEFAULT 'weekly',
+            category TEXT,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS eos_scorecard_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            metric_id INTEGER REFERENCES eos_scorecard_metrics(id),
+            week_start TEXT NOT NULL,
+            value TEXT,
+            on_track INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS eos_todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            due_date TEXT,
+            status TEXT DEFAULT 'open',
+            source TEXT DEFAULT 'manual',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        );
+    """)
+    # Seed V/TO sections
+    vto_sections = [
+        'core_values', 'core_focus', 'ten_year_target', 'marketing_strategy',
+        'three_year_picture', 'one_year_plan', 'quarterly_rocks_summary'
+    ]
+    for s in vto_sections:
+        conn.execute("INSERT OR IGNORE INTO eos_vto (section, content) VALUES (?, ?)", (s, '{}'))
+    conn.commit()
+    conn.close()
+    logger.info("EOS database initialized")
+
+
+TEAM_MEMBERS = [
+    "Jake Shumaker", "Sean Miller", "Luke Shumaker", "Bartosz Stoppel",
+    "Sam Gohel", "Razvan Crisan", "Adri Andika", "Walter Miller"
+]
+
+
+def _row_to_dict(row):
+    return dict(row) if row else None
+
+
+def _rows_to_list(rows):
+    return [dict(r) for r in rows]
+
+
+def _current_quarter():
+    now = datetime.now()
+    q = (now.month - 1) // 3 + 1
+    return f"Q{q} {now.year}"
+
+
+# ---------------------------------------------------------------------------
+# Page routes
+# ---------------------------------------------------------------------------
+
+@eos_bp.route("/eos")
+@admin_required
+def eos_hub():
+    return render_template("eos.html", page="hub", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
+
+@eos_bp.route("/eos/rocks")
+@admin_required
+def eos_rocks_page():
+    return render_template("eos.html", page="rocks", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
+
+@eos_bp.route("/eos/issues")
+@admin_required
+def eos_issues_page():
+    return render_template("eos.html", page="issues", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
+
+@eos_bp.route("/eos/vto")
+@admin_required
+def eos_vto_page():
+    return render_template("eos.html", page="vto", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
+
+@eos_bp.route("/eos/scorecard")
+@admin_required
+def eos_scorecard_page():
+    return render_template("eos.html", page="scorecard", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
+
+@eos_bp.route("/eos/todos")
+@admin_required
+def eos_todos_page():
+    return render_template("eos.html", page="todos", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
+
+
+# ---------------------------------------------------------------------------
+# API: Rocks
+# ---------------------------------------------------------------------------
+
+@eos_bp.route("/api/eos/rocks", methods=["GET"])
+@admin_required
+def api_rocks_list():
+    quarter = request.args.get("quarter", _current_quarter())
+    owner = request.args.get("owner")
+    status = request.args.get("status")
+    db = _get_db()
+    q = "SELECT * FROM eos_rocks WHERE quarter = ?"
+    params = [quarter]
+    if owner:
+        q += " AND owner = ?"; params.append(owner)
+    if status:
+        q += " AND status = ?"; params.append(status)
+    q += " ORDER BY created_at DESC"
+    rows = db.execute(q, params).fetchall()
+    db.close()
+    return jsonify(_rows_to_list(rows))
+
+@eos_bp.route("/api/eos/rocks", methods=["POST"])
+@admin_required
+def api_rocks_create():
+    data = request.json
+    db = _get_db()
+    cur = db.execute(
+        "INSERT INTO eos_rocks (title, owner, quarter, status, description, due_date) VALUES (?,?,?,?,?,?)",
+        (data["title"], data["owner"], data.get("quarter", _current_quarter()),
+         data.get("status", "on_track"), data.get("description", ""), data.get("due_date"))
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM eos_rocks WHERE id = ?", (cur.lastrowid,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row)), 201
+
+@eos_bp.route("/api/eos/rocks/<int:rock_id>", methods=["PUT"])
+@admin_required
+def api_rocks_update(rock_id):
+    data = request.json
+    db = _get_db()
+    fields = []
+    params = []
+    for f in ["title", "owner", "quarter", "status", "description", "due_date"]:
+        if f in data:
+            fields.append(f"{f} = ?"); params.append(data[f])
+    fields.append("updated_at = ?"); params.append(datetime.now().isoformat())
+    params.append(rock_id)
+    db.execute(f"UPDATE eos_rocks SET {', '.join(fields)} WHERE id = ?", params)
+    db.commit()
+    row = db.execute("SELECT * FROM eos_rocks WHERE id = ?", (rock_id,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row))
+
+@eos_bp.route("/api/eos/rocks/<int:rock_id>", methods=["DELETE"])
+@admin_required
+def api_rocks_delete(rock_id):
+    db = _get_db()
+    db.execute("DELETE FROM eos_rocks WHERE id = ?", (rock_id,))
+    db.commit()
+    db.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# API: Issues
+# ---------------------------------------------------------------------------
+
+@eos_bp.route("/api/eos/issues", methods=["GET"])
+@admin_required
+def api_issues_list():
+    category = request.args.get("category")
+    status = request.args.get("status", "open")
+    db = _get_db()
+    q = "SELECT * FROM eos_issues WHERE status = ?"
+    params = [status]
+    if category:
+        q += " AND category = ?"; params.append(category)
+    q += " ORDER BY priority DESC, created_at DESC"
+    rows = db.execute(q, params).fetchall()
+    db.close()
+    return jsonify(_rows_to_list(rows))
+
+@eos_bp.route("/api/eos/issues", methods=["POST"])
+@admin_required
+def api_issues_create():
+    data = request.json
+    db = _get_db()
+    cur = db.execute(
+        "INSERT INTO eos_issues (title, description, priority, category, owner) VALUES (?,?,?,?,?)",
+        (data["title"], data.get("description", ""), data.get("priority", 0),
+         data.get("category", "short_term"), data.get("owner"))
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM eos_issues WHERE id = ?", (cur.lastrowid,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row)), 201
+
+@eos_bp.route("/api/eos/issues/<int:issue_id>", methods=["PUT"])
+@admin_required
+def api_issues_update(issue_id):
+    data = request.json
+    db = _get_db()
+    fields = []
+    params = []
+    for f in ["title", "description", "priority", "category", "status", "owner", "resolution_notes"]:
+        if f in data:
+            fields.append(f"{f} = ?"); params.append(data[f])
+    if data.get("status") == "resolved":
+        fields.append("resolved_at = ?"); params.append(datetime.now().isoformat())
+    params.append(issue_id)
+    db.execute(f"UPDATE eos_issues SET {', '.join(fields)} WHERE id = ?", params)
+    db.commit()
+    row = db.execute("SELECT * FROM eos_issues WHERE id = ?", (issue_id,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row))
+
+@eos_bp.route("/api/eos/issues/<int:issue_id>", methods=["DELETE"])
+@admin_required
+def api_issues_delete(issue_id):
+    db = _get_db()
+    db.execute("DELETE FROM eos_issues WHERE id = ?", (issue_id,))
+    db.commit()
+    db.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# API: V/TO
+# ---------------------------------------------------------------------------
+
+@eos_bp.route("/api/eos/vto", methods=["GET"])
+@admin_required
+def api_vto_list():
+    db = _get_db()
+    rows = db.execute("SELECT * FROM eos_vto ORDER BY id").fetchall()
+    db.close()
+    return jsonify(_rows_to_list(rows))
+
+@eos_bp.route("/api/eos/vto/<section>", methods=["PUT"])
+@admin_required
+def api_vto_update(section):
+    data = request.json
+    db = _get_db()
+    db.execute("UPDATE eos_vto SET content = ?, updated_at = ? WHERE section = ?",
+               (json.dumps(data.get("content", {})), datetime.now().isoformat(), section))
+    db.commit()
+    row = db.execute("SELECT * FROM eos_vto WHERE section = ?", (section,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row))
+
+
+# ---------------------------------------------------------------------------
+# API: Scorecard
+# ---------------------------------------------------------------------------
+
+@eos_bp.route("/api/eos/scorecard/metrics", methods=["GET"])
+@admin_required
+def api_scorecard_metrics():
+    db = _get_db()
+    rows = db.execute("SELECT * FROM eos_scorecard_metrics ORDER BY sort_order, id").fetchall()
+    db.close()
+    return jsonify(_rows_to_list(rows))
+
+@eos_bp.route("/api/eos/scorecard/metrics", methods=["POST"])
+@admin_required
+def api_scorecard_metrics_create():
+    data = request.json
+    db = _get_db()
+    cur = db.execute(
+        "INSERT INTO eos_scorecard_metrics (name, owner, goal, frequency, category, sort_order) VALUES (?,?,?,?,?,?)",
+        (data["name"], data["owner"], data.get("goal"), data.get("frequency", "weekly"),
+         data.get("category"), data.get("sort_order", 0))
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM eos_scorecard_metrics WHERE id = ?", (cur.lastrowid,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row)), 201
+
+@eos_bp.route("/api/eos/scorecard/metrics/<int:metric_id>", methods=["PUT"])
+@admin_required
+def api_scorecard_metrics_update(metric_id):
+    data = request.json
+    db = _get_db()
+    fields = []
+    params = []
+    for f in ["name", "owner", "goal", "frequency", "category", "sort_order"]:
+        if f in data:
+            fields.append(f"{f} = ?"); params.append(data[f])
+    params.append(metric_id)
+    db.execute(f"UPDATE eos_scorecard_metrics SET {', '.join(fields)} WHERE id = ?", params)
+    db.commit()
+    row = db.execute("SELECT * FROM eos_scorecard_metrics WHERE id = ?", (metric_id,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row))
+
+@eos_bp.route("/api/eos/scorecard/metrics/<int:metric_id>", methods=["DELETE"])
+@admin_required
+def api_scorecard_metrics_delete(metric_id):
+    db = _get_db()
+    db.execute("DELETE FROM eos_scorecard_entries WHERE metric_id = ?", (metric_id,))
+    db.execute("DELETE FROM eos_scorecard_metrics WHERE id = ?", (metric_id,))
+    db.commit()
+    db.close()
+    return jsonify({"ok": True})
+
+@eos_bp.route("/api/eos/scorecard/entries", methods=["GET"])
+@admin_required
+def api_scorecard_entries():
+    metric_id = request.args.get("metric_id")
+    db = _get_db()
+    if metric_id:
+        rows = db.execute("SELECT * FROM eos_scorecard_entries WHERE metric_id = ? ORDER BY week_start DESC", (metric_id,)).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM eos_scorecard_entries ORDER BY week_start DESC").fetchall()
+    db.close()
+    return jsonify(_rows_to_list(rows))
+
+@eos_bp.route("/api/eos/scorecard/entries", methods=["POST"])
+@admin_required
+def api_scorecard_entries_create():
+    data = request.json
+    db = _get_db()
+    # Upsert
+    existing = db.execute("SELECT id FROM eos_scorecard_entries WHERE metric_id = ? AND week_start = ?",
+                          (data["metric_id"], data["week_start"])).fetchone()
+    if existing:
+        db.execute("UPDATE eos_scorecard_entries SET value = ?, on_track = ? WHERE id = ?",
+                   (data.get("value"), data.get("on_track", 1), existing["id"]))
+    else:
+        db.execute("INSERT INTO eos_scorecard_entries (metric_id, week_start, value, on_track) VALUES (?,?,?,?)",
+                   (data["metric_id"], data["week_start"], data.get("value"), data.get("on_track", 1)))
+    db.commit()
+    db.close()
+    return jsonify({"ok": True}), 201
+
+
+# ---------------------------------------------------------------------------
+# API: Todos
+# ---------------------------------------------------------------------------
+
+@eos_bp.route("/api/eos/todos", methods=["GET"])
+@admin_required
+def api_todos_list():
+    status = request.args.get("status", "open")
+    db = _get_db()
+    if status == "all":
+        rows = db.execute("SELECT * FROM eos_todos ORDER BY status ASC, created_at DESC").fetchall()
+    else:
+        rows = db.execute("SELECT * FROM eos_todos WHERE status = ? ORDER BY created_at DESC", (status,)).fetchall()
+    db.close()
+    return jsonify(_rows_to_list(rows))
+
+@eos_bp.route("/api/eos/todos", methods=["POST"])
+@admin_required
+def api_todos_create():
+    data = request.json
+    db = _get_db()
+    due = data.get("due_date") or (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    cur = db.execute(
+        "INSERT INTO eos_todos (title, owner, due_date, source) VALUES (?,?,?,?)",
+        (data["title"], data["owner"], due, data.get("source", "manual"))
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM eos_todos WHERE id = ?", (cur.lastrowid,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row)), 201
+
+@eos_bp.route("/api/eos/todos/<int:todo_id>", methods=["PUT"])
+@admin_required
+def api_todos_update(todo_id):
+    data = request.json
+    db = _get_db()
+    fields = []
+    params = []
+    for f in ["title", "owner", "due_date", "status", "source"]:
+        if f in data:
+            fields.append(f"{f} = ?"); params.append(data[f])
+    if data.get("status") == "done":
+        fields.append("completed_at = ?"); params.append(datetime.now().isoformat())
+    params.append(todo_id)
+    db.execute(f"UPDATE eos_todos SET {', '.join(fields)} WHERE id = ?", params)
+    db.commit()
+    row = db.execute("SELECT * FROM eos_todos WHERE id = ?", (todo_id,)).fetchone()
+    db.close()
+    return jsonify(_row_to_dict(row))
+
+@eos_bp.route("/api/eos/todos/<int:todo_id>", methods=["DELETE"])
+@admin_required
+def api_todos_delete(todo_id):
+    db = _get_db()
+    db.execute("DELETE FROM eos_todos WHERE id = ?", (todo_id,))
+    db.commit()
+    db.close()
+    return jsonify({"ok": True})
+
+# Auto-archive: clean up completed todos older than 2 weeks
+@eos_bp.route("/api/eos/todos/archive", methods=["POST"])
+@admin_required
+def api_todos_archive():
+    cutoff = (datetime.now() - timedelta(weeks=2)).isoformat()
+    db = _get_db()
+    result = db.execute("DELETE FROM eos_todos WHERE status = 'done' AND completed_at < ?", (cutoff,))
+    db.commit()
+    db.close()
+    return jsonify({"archived": result.rowcount})

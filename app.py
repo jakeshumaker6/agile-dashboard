@@ -22,6 +22,7 @@ from client_health_cache import read_cache, write_cache, is_cache_empty
 from sentiment_overrides import load_overrides, save_override, delete_override, apply_overrides
 from client_mappings import load_mappings, save_email_mapping, save_grain_match
 from auth import auth_bp, login_required, admin_required, init_db as init_auth_db
+from eos import eos_bp, init_eos_db
 from auth.user_sync import sync_users_from_clickup
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -78,6 +79,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Register auth blueprint
 app.register_blueprint(auth_bp)
+app.register_blueprint(eos_bp)
 
 
 @app.before_request
@@ -88,6 +90,7 @@ def _clear_request_caches():
 
 # Initialize auth database on startup
 init_auth_db()
+init_eos_db()
 
 # Fibonacci score option IDs (for reverse lookup)
 SCORE_OPTIONS = {
