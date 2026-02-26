@@ -718,9 +718,7 @@
     }
 
     async function editRock(id) {
-        const rocks = await api(`/rocks?quarter=`);
-        // fetch all to find it
-        const allRocks = await fetch(API + `/rocks?quarter=${encodeURIComponent(document.getElementById('rockQuarterFilter').value)}`).then(r => r.json());
+        const allRocks = await api(`/rocks?quarter=${encodeURIComponent(document.getElementById('rockQuarterFilter').value)}`);
         const rock = allRocks.find(r => r.id === id);
         if (rock) openRockModal(rock);
     }
