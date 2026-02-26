@@ -1280,8 +1280,15 @@ def health_integrations():
 
 @app.route("/")
 @login_required
+def home():
+    """Serve the home page with navigation tiles."""
+    return render_template("home.html")
+
+
+@app.route("/dashboard")
+@login_required
 def dashboard():
-    """Serve the dashboard page."""
+    """Serve the sprint dashboard page."""
     return render_template("dashboard.html")
 
 

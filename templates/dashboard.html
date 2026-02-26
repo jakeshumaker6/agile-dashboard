@@ -975,11 +975,12 @@
     <!-- Sidebar -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
     <nav class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
+        <a href="/" class="sidebar-brand" style="text-decoration: none;">
             <img src="/static/logo.jpeg" alt="Pulse">
             <span>Pulse</span>
-        </div>
-        <a href="/" class="sidebar-item active">Sprint Dashboard</a>
+        </a>
+        <a href="/" class="sidebar-item">Home</a>
+        <a href="/dashboard" class="sidebar-item active">Sprint Dashboard</a>
         <a href="/client-health" class="sidebar-item">Client Health</a>
         <a href="/eos" class="sidebar-item">EOS Tools</a>
         {% if session.role == 'admin' %}

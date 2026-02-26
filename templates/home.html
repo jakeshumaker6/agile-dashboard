@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse Dashboard</title>
+    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-dark: #D14B62;
+            --pulse-navy: #1E2A4A;
+            --bg-dark: #0F1318;
+            --bg-card: #161B24;
+            --bg-card-hover: #1D242F;
+            --border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --success: #4ADE80;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: var(--pulse-navy);
+            padding: 20px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-section img {
+            height: 40px;
+            border-radius: 8px;
+        }
+
+        .logo-section span {
+            font-size: 20px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .header-actions a {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .header-actions a:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 24px;
+        }
+
+        .welcome {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .welcome h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .welcome p {
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+
+        .tiles {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .tile {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            text-decoration: none;
+            color: var(--text);
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tile:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--pulse-primary);
+            transform: translateY(-2px);
+        }
+
+        .tile-icon {
+            font-size: 40px;
+            margin-bottom: 16px;
+        }
+
+        .tile-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .tile-description {
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .admin-section {
+            margin-top: 48px;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .admin-section h2 {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .admin-tiles {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .admin-tile {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-decoration: none;
+            color: var(--text);
+            transition: all 0.2s;
+        }
+
+        .admin-tile:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--pulse-primary);
+        }
+
+        .admin-tile-title {
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .admin-tile-description {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        footer a {
+            color: var(--pulse-primary);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-section">
+            <img src="/static/logo.jpeg" alt="Pulse">
+            <span>Pulse</span>
+        </div>
+        <div class="header-actions">
+            <a href="/settings">Settings</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="welcome">
+            <h1>Welcome back, {{ session.username or 'Team' }}</h1>
+            <p>Select a dashboard to get started</p>
+        </div>
+
+        <div class="tiles">
+            <a href="/dashboard" class="tile">
+                <div class="tile-icon">📊</div>
+                <div class="tile-title">Sprint Dashboard</div>
+                <div class="tile-description">Track sprint progress, velocity, and team performance. View points completed, efficiency metrics, and AI-powered insights.</div>
+            </a>
+
+            <a href="/client-health" class="tile">
+                <div class="tile-icon">💚</div>
+                <div class="tile-title">Client Health</div>
+                <div class="tile-description">Monitor client satisfaction and engagement. Track overdue tasks, communication frequency, and risk indicators.</div>
+            </a>
+
+            <a href="/eos" class="tile">
+                <div class="tile-icon">🎯</div>
+                <div class="tile-title">EOS Tools</div>
+                <div class="tile-description">Manage your EOS implementation. Track Rocks, Issues, V/TO, Scorecard metrics, and team To-Dos.</div>
+            </a>
+        </div>
+
+        {% if session.role == 'admin' %}
+        <div class="admin-section">
+            <h2>Admin Tools</h2>
+            <div class="admin-tiles">
+                <a href="/client-mapping" class="admin-tile">
+                    <div class="admin-tile-title">Client Mapping</div>
+                    <div class="admin-tile-description">Configure client-folder relationships</div>
+                </a>
+                <a href="/admin/users" class="admin-tile">
+                    <div class="admin-tile-title">User Management</div>
+                    <div class="admin-tile-description">Manage team access and roles</div>
+                </a>
+                <a href="/sprint-planning" class="admin-tile">
+                    <div class="admin-tile-title">Sprint Planning</div>
+                    <div class="admin-tile-description">AI-assisted sprint planning</div>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <footer>
+        <a href="https://pulsemarketing.co" target="_blank">Pulse Marketing</a> &bull;
+        Agile Dashboard
+    </footer>
+</body>
+</html>
