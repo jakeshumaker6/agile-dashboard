@@ -1767,6 +1767,231 @@ def api_admin_sync_users():
         return jsonify({"error": str(e)}), 500
 
 
+
+# ============================================================================
+# Team Performance Routes (Admin Only)
+# ============================================================================
+
+@app.route("/team-performance")
+@admin_required
+def team_performance():
+    """Serve the team performance dashboard page."""
+    return render_template("team_performance.html")
+
+
+@app.route("/api/team-performance")
+@admin_required
+def api_team_performance():
+    """Get performance data for all Pulse team members."""
+    try:
+        pulse_members = get_pulse_team_members()
+        excluded = load_excluded_assignees()
+        all_tasks = get_all_tasks()
+        capacity = build_team_capacity()
+
+        # Filter out excluded members
+        pulse_members = [m for m in pulse_members if m["username"] not in excluded]
+
+        now = datetime.now()
+        results = []
+
+        for member in pulse_members:
+            mid = member["id"]
+            name = member["username"]
+
+            # Filter tasks for this member
+            member_tasks = [t for t in all_tasks if any(a["id"] == mid for a in t["assignees"])]
+
+            # --- 8-week velocity + tasks-per-week ---
+            weekly_points = []
+            weekly_tasks = []
+            for offset in range(0, -8, -1):
+                mon, sun = get_week_bounds(week_offset=offset)
+                completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and mon <= t["date_closed"] <= sun]
+                pts = sum(t["score"] or 0 for t in completed)
+                weekly_points.append({"week": mon.strftime("%b %d"), "points": pts})
+                weekly_tasks.append({"week": mon.strftime("%b %d"), "tasks": len(completed)})
+            weekly_points.reverse()
+            weekly_tasks.reverse()
+
+            # --- On-time vs overdue ---
+            completed_all = [t for t in member_tasks if t["is_complete"] and t["date_closed"]]
+            on_time = 0
+            overdue = 0
+            no_due = 0
+            for t in completed_all:
+                if t["due_date"]:
+                    if t["date_closed"] <= t["due_date"]:
+                        on_time += 1
+                    else:
+                        overdue += 1
+                else:
+                    no_due += 1
+
+            # --- Average time-to-close ---
+            close_times = []
+            for t in completed_all:
+                if t["date_created"] and t["date_closed"]:
+                    delta = (t["date_closed"] - t["date_created"]).total_seconds() / 86400
+                    close_times.append(delta)
+            avg_close_days = round(sum(close_times) / len(close_times), 1) if close_times else None
+
+            # --- Workload distribution ---
+            active_statuses = ["in progress", "in review", "waiting response", "doing", "active", "working"]
+            in_progress = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() in active_statuses]
+            backlog = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "backlog"]
+
+            # --- Score distribution ---
+            score_dist = {1: 0, 2: 0, 3: 0, 5: 0, 8: 0, 13: 0}
+            for t in completed_all:
+                if t["score"] in score_dist:
+                    score_dist[t["score"]] += 1
+
+            # --- Current week points ---
+            cur_mon, cur_sun = get_week_bounds(week_offset=0)
+            cur_completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and cur_mon <= t["date_closed"] <= cur_sun]
+            current_week_points = sum(t["score"] or 0 for t in cur_completed)
+
+            # --- Utilization rate ---
+            member_hours = capacity.get(name, DEFAULT_MEMBER_HOURS)
+            expected_pts = calculate_expected_points_from_hours(member_hours)
+            # Average points over last 4 weeks for utilization
+            last4_pts = [w["points"] for w in weekly_points[-4:]]
+            avg_pts_4w = sum(last4_pts) / len(last4_pts) if last4_pts else 0
+            utilization = round((avg_pts_4w / expected_pts) * 100) if expected_pts else 0
+
+            results.append({
+                "id": mid,
+                "username": name,
+                "email": member.get("email", ""),
+                "initials": member.get("initials", ""),
+                "current_week_points": current_week_points,
+                "current_week_tasks": len(cur_completed),
+                "weekly_points": weekly_points,
+                "weekly_tasks": weekly_tasks,
+                "on_time": on_time,
+                "overdue": overdue,
+                "no_due_date": no_due,
+                "avg_close_days": avg_close_days,
+                "in_progress": len(in_progress),
+                "in_progress_points": sum(t["score"] or 0 for t in in_progress),
+                "backlog": len(backlog),
+                "backlog_points": sum(t["score"] or 0 for t in backlog),
+                "score_distribution": score_dist,
+                "capacity_hours": member_hours,
+                "expected_points": expected_pts,
+                "avg_points_4w": round(avg_pts_4w, 1),
+                "utilization_pct": utilization,
+            })
+
+        # Sort by current week points desc
+        results.sort(key=lambda x: x["current_week_points"], reverse=True)
+
+        return jsonify({
+            "members": results,
+            "team_totals": {
+                "total_members": len(results),
+                "total_current_points": sum(r["current_week_points"] for r in results),
+                "total_current_tasks": sum(r["current_week_tasks"] for r in results),
+                "avg_utilization": round(sum(r["utilization_pct"] for r in results) / len(results)) if results else 0,
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error in api_team_performance: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/team-performance/<int:member_id>")
+@admin_required
+def api_team_performance_member(member_id):
+    """Get detailed performance data for a single team member."""
+    try:
+        all_tasks = get_all_tasks()
+        capacity = build_team_capacity()
+        member_tasks = [t for t in all_tasks if any(a["id"] == member_id for a in t["assignees"])]
+
+        if not member_tasks:
+            return jsonify({"error": "No tasks found for this member"}), 404
+
+        # Get member name from first task
+        member_name = "Unknown"
+        for t in member_tasks:
+            for a in t["assignees"]:
+                if a["id"] == member_id:
+                    member_name = a["username"]
+                    break
+            if member_name != "Unknown":
+                break
+
+        # 8-week detailed history
+        weekly_data = []
+        for offset in range(0, -8, -1):
+            mon, sun = get_week_bounds(week_offset=offset)
+            completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and mon <= t["date_closed"] <= sun]
+            pts = sum(t["score"] or 0 for t in completed)
+
+            on_time = sum(1 for t in completed if t["due_date"] and t["date_closed"] <= t["due_date"])
+            overdue_count = sum(1 for t in completed if t["due_date"] and t["date_closed"] > t["due_date"])
+
+            weekly_data.append({
+                "week": mon.strftime("%b %d"),
+                "week_start": mon.strftime("%Y-%m-%d"),
+                "points": pts,
+                "tasks": len(completed),
+                "on_time": on_time,
+                "overdue": overdue_count,
+            })
+        weekly_data.reverse()
+
+        # Recent completed tasks (last 2 weeks)
+        two_weeks_ago = datetime.now() - timedelta(weeks=2)
+        recent = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and t["date_closed"] >= two_weeks_ago]
+        recent.sort(key=lambda t: t["date_closed"], reverse=True)
+        recent_tasks = [{
+            "name": t["name"],
+            "score": t["score"],
+            "status": t["status"],
+            "date_closed": t["date_closed"].strftime("%Y-%m-%d") if t["date_closed"] else None,
+            "due_date": t["due_date"].strftime("%Y-%m-%d") if t["due_date"] else None,
+            "was_on_time": (t["date_closed"] <= t["due_date"]) if t["due_date"] and t["date_closed"] else None,
+            "url": t["url"],
+            "time_spent_hours": round(t.get("time_spent_ms", 0) / 3600000, 1),
+        } for t in recent[:20]]
+
+        # Score distribution (all time)
+        score_dist = {1: 0, 2: 0, 3: 0, 5: 0, 8: 0, 13: 0}
+        completed_all = [t for t in member_tasks if t["is_complete"]]
+        for t in completed_all:
+            if t["score"] in score_dist:
+                score_dist[t["score"]] += 1
+
+        # Close times
+        close_times = []
+        for t in completed_all:
+            if t["date_created"] and t["date_closed"]:
+                delta = (t["date_closed"] - t["date_created"]).total_seconds() / 86400
+                close_times.append(delta)
+
+        member_hours = capacity.get(member_name, DEFAULT_MEMBER_HOURS)
+        expected_pts = calculate_expected_points_from_hours(member_hours)
+
+        return jsonify({
+            "id": member_id,
+            "username": member_name,
+            "weekly_data": weekly_data,
+            "recent_tasks": recent_tasks,
+            "score_distribution": score_dist,
+            "avg_close_days": round(sum(close_times) / len(close_times), 1) if close_times else None,
+            "median_close_days": round(sorted(close_times)[len(close_times) // 2], 1) if close_times else None,
+            "total_completed": len(completed_all),
+            "capacity_hours": member_hours,
+            "expected_points": expected_pts,
+        })
+    except Exception as e:
+        logger.error(f"Error in api_team_performance_member: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 def sync_users_scheduled():
     """Scheduled user sync (runs daily with other caches)."""
     try:
