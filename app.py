@@ -1776,17 +1776,23 @@ def api_admin_sync_users():
 # ============================================================================
 
 @app.route("/team-performance")
-@admin_required
+@login_required
 def team_performance():
     """Serve the team performance dashboard page."""
     return render_template("team_performance.html")
 
 
 @app.route("/api/team-performance")
-@admin_required
+@login_required
 def api_team_performance():
     """Get performance data for all Pulse team members."""
     try:
+        # Try daily cache first
+        cached = get_from_daily_cache('team_performance', 'all')
+        if cached:
+            logger.info("Returning cached team performance data")
+            return jsonify(cached)
+
         pulse_members = get_pulse_team_members()
         excluded = load_excluded_assignees()
         all_tasks = get_all_tasks()
@@ -1890,7 +1896,7 @@ def api_team_performance():
         # Sort by current week points desc
         results.sort(key=lambda x: x["current_week_points"], reverse=True)
 
-        return jsonify({
+        response_data = {
             "members": results,
             "team_totals": {
                 "total_members": len(results),
@@ -1898,14 +1904,18 @@ def api_team_performance():
                 "total_current_tasks": sum(r["current_week_tasks"] for r in results),
                 "avg_utilization": round(sum(r["utilization_pct"] for r in results) / len(results)) if results else 0,
             }
-        })
+        }
+
+        # Cache the result
+        set_daily_cache('team_performance', 'all', response_data)
+        return jsonify(response_data)
     except Exception as e:
         logger.error(f"Error in api_team_performance: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/team-performance/<int:member_id>")
-@admin_required
+@login_required
 def api_team_performance_member(member_id):
     """Get detailed performance data for a single team member."""
     try:

@@ -10,7 +10,7 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, jsonify, request, session
-from auth import login_required, admin_required
+from auth import login_required
 
 logger = logging.getLogger(__name__)
 
@@ -142,32 +142,32 @@ def _current_quarter():
 # ---------------------------------------------------------------------------
 
 @eos_bp.route("/eos")
-@admin_required
+@login_required
 def eos_hub():
     return render_template("eos.html", page="hub", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
 
 @eos_bp.route("/eos/rocks")
-@admin_required
+@login_required
 def eos_rocks_page():
     return render_template("eos.html", page="rocks", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
 
 @eos_bp.route("/eos/issues")
-@admin_required
+@login_required
 def eos_issues_page():
     return render_template("eos.html", page="issues", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
 
 @eos_bp.route("/eos/vto")
-@admin_required
+@login_required
 def eos_vto_page():
     return render_template("eos.html", page="vto", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
 
 @eos_bp.route("/eos/scorecard")
-@admin_required
+@login_required
 def eos_scorecard_page():
     return render_template("eos.html", page="scorecard", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
 
 @eos_bp.route("/eos/todos")
-@admin_required
+@login_required
 def eos_todos_page():
     return render_template("eos.html", page="todos", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
 
@@ -177,7 +177,7 @@ def eos_todos_page():
 # ---------------------------------------------------------------------------
 
 @eos_bp.route("/api/eos/rocks", methods=["GET"])
-@admin_required
+@login_required
 def api_rocks_list():
     quarter = request.args.get("quarter", _current_quarter())
     owner = request.args.get("owner")
@@ -194,7 +194,7 @@ def api_rocks_list():
         return jsonify(_rows_to_list(rows))
 
 @eos_bp.route("/api/eos/rocks", methods=["POST"])
-@admin_required
+@login_required
 def api_rocks_create():
     data = request.json
     if not data or not data.get("title") or not data.get("owner"):
@@ -210,7 +210,7 @@ def api_rocks_create():
         return jsonify(_row_to_dict(row)), 201
 
 @eos_bp.route("/api/eos/rocks/<int:rock_id>", methods=["PUT"])
-@admin_required
+@login_required
 def api_rocks_update(rock_id):
     data = request.json
     if not data:
@@ -233,7 +233,7 @@ def api_rocks_update(rock_id):
         return jsonify(_row_to_dict(row))
 
 @eos_bp.route("/api/eos/rocks/<int:rock_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_rocks_delete(rock_id):
     with _db() as db:
         db.execute("DELETE FROM eos_rocks WHERE id = ?", (rock_id,))
@@ -246,7 +246,7 @@ def api_rocks_delete(rock_id):
 # ---------------------------------------------------------------------------
 
 @eos_bp.route("/api/eos/issues", methods=["GET"])
-@admin_required
+@login_required
 def api_issues_list():
     category = request.args.get("category")
     status = request.args.get("status", "open")
@@ -260,7 +260,7 @@ def api_issues_list():
         return jsonify(_rows_to_list(rows))
 
 @eos_bp.route("/api/eos/issues", methods=["POST"])
-@admin_required
+@login_required
 def api_issues_create():
     data = request.json
     if not data or not data.get("title"):
@@ -276,7 +276,7 @@ def api_issues_create():
         return jsonify(_row_to_dict(row)), 201
 
 @eos_bp.route("/api/eos/issues/<int:issue_id>", methods=["PUT"])
-@admin_required
+@login_required
 def api_issues_update(issue_id):
     data = request.json
     if not data:
@@ -300,7 +300,7 @@ def api_issues_update(issue_id):
         return jsonify(_row_to_dict(row))
 
 @eos_bp.route("/api/eos/issues/<int:issue_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_issues_delete(issue_id):
     with _db() as db:
         db.execute("DELETE FROM eos_issues WHERE id = ?", (issue_id,))
@@ -313,14 +313,14 @@ def api_issues_delete(issue_id):
 # ---------------------------------------------------------------------------
 
 @eos_bp.route("/api/eos/vto", methods=["GET"])
-@admin_required
+@login_required
 def api_vto_list():
     with _db() as db:
         rows = db.execute("SELECT * FROM eos_vto ORDER BY id").fetchall()
         return jsonify(_rows_to_list(rows))
 
 @eos_bp.route("/api/eos/vto/<section>", methods=["PUT"])
-@admin_required
+@login_required
 def api_vto_update(section):
     data = request.json
     if not data:
@@ -342,14 +342,14 @@ def api_vto_update(section):
 # ---------------------------------------------------------------------------
 
 @eos_bp.route("/api/eos/scorecard/metrics", methods=["GET"])
-@admin_required
+@login_required
 def api_scorecard_metrics():
     with _db() as db:
         rows = db.execute("SELECT * FROM eos_scorecard_metrics ORDER BY sort_order, id").fetchall()
         return jsonify(_rows_to_list(rows))
 
 @eos_bp.route("/api/eos/scorecard/metrics", methods=["POST"])
-@admin_required
+@login_required
 def api_scorecard_metrics_create():
     data = request.json
     if not data or not data.get("name") or not data.get("owner"):
@@ -365,7 +365,7 @@ def api_scorecard_metrics_create():
         return jsonify(_row_to_dict(row)), 201
 
 @eos_bp.route("/api/eos/scorecard/metrics/<int:metric_id>", methods=["PUT"])
-@admin_required
+@login_required
 def api_scorecard_metrics_update(metric_id):
     data = request.json
     if not data:
@@ -387,7 +387,7 @@ def api_scorecard_metrics_update(metric_id):
         return jsonify(_row_to_dict(row))
 
 @eos_bp.route("/api/eos/scorecard/metrics/<int:metric_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_scorecard_metrics_delete(metric_id):
     with _db() as db:
         db.execute("DELETE FROM eos_scorecard_entries WHERE metric_id = ?", (metric_id,))
@@ -396,7 +396,7 @@ def api_scorecard_metrics_delete(metric_id):
         return jsonify({"ok": True})
 
 @eos_bp.route("/api/eos/scorecard/entries", methods=["GET"])
-@admin_required
+@login_required
 def api_scorecard_entries():
     metric_id = request.args.get("metric_id")
     with _db() as db:
@@ -407,7 +407,7 @@ def api_scorecard_entries():
         return jsonify(_rows_to_list(rows))
 
 @eos_bp.route("/api/eos/scorecard/entries", methods=["POST"])
-@admin_required
+@login_required
 def api_scorecard_entries_create():
     data = request.json
     if not data or not data.get("metric_id") or not data.get("week_start"):
@@ -431,7 +431,7 @@ def api_scorecard_entries_create():
 # ---------------------------------------------------------------------------
 
 @eos_bp.route("/api/eos/todos", methods=["GET"])
-@admin_required
+@login_required
 def api_todos_list():
     status = request.args.get("status", "open")
     with _db() as db:
@@ -442,7 +442,7 @@ def api_todos_list():
         return jsonify(_rows_to_list(rows))
 
 @eos_bp.route("/api/eos/todos", methods=["POST"])
-@admin_required
+@login_required
 def api_todos_create():
     data = request.json
     if not data or not data.get("title") or not data.get("owner"):
@@ -458,7 +458,7 @@ def api_todos_create():
         return jsonify(_row_to_dict(row)), 201
 
 @eos_bp.route("/api/eos/todos/<int:todo_id>", methods=["PUT"])
-@admin_required
+@login_required
 def api_todos_update(todo_id):
     data = request.json
     if not data:
@@ -482,7 +482,7 @@ def api_todos_update(todo_id):
         return jsonify(_row_to_dict(row))
 
 @eos_bp.route("/api/eos/todos/<int:todo_id>", methods=["DELETE"])
-@admin_required
+@login_required
 def api_todos_delete(todo_id):
     with _db() as db:
         db.execute("DELETE FROM eos_todos WHERE id = ?", (todo_id,))
@@ -491,7 +491,7 @@ def api_todos_delete(todo_id):
 
 # Auto-archive: clean up completed todos older than 2 weeks
 @eos_bp.route("/api/eos/todos/archive", methods=["POST"])
-@admin_required
+@login_required
 def api_todos_archive():
     cutoff = (datetime.now() - timedelta(weeks=2)).isoformat()
     with _db() as db:
