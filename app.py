@@ -516,6 +516,24 @@ def get_from_daily_cache(data_type: str, key: str):
     return None
 
 
+def set_daily_cache(data_type: str, key: str, value):
+    """
+    Set a specific key in the daily cache.
+    Creates the data_type section if it doesn't exist.
+    """
+    global _daily_cache, _daily_cache_loaded
+
+    with _daily_cache_lock:
+        try:
+            cache = load_daily_cache() or {}
+            if data_type not in cache:
+                cache[data_type] = {}
+            cache[data_type][key] = value
+            save_daily_cache(cache)
+        except Exception as e:
+            logger.error(f"Error setting daily cache [{data_type}][{key}]: {e}")
+
+
 def clickup_request(endpoint: str) -> dict:
     """Make a request to ClickUp API."""
     url = f"https://api.clickup.com/api/v2{endpoint}"
