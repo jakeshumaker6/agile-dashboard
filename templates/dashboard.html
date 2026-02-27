@@ -1063,7 +1063,7 @@
         </div>
 
         <!-- Sprint Overview Tab -->
-        <div id="sprintTab" class="tab-content active">
+        <div id="sprintTab" style="display: block;">
         <div class="cache-status" id="cacheStatus">
             <span id="cacheStatusText">Data: Loading...</span>
         </div>
@@ -1318,7 +1318,7 @@
         </div><!-- End Sprint Tab -->
 
         <!-- Team Performance Tab -->
-        <div id="teamTab" class="tab-content">
+        <div id="teamTab" style="display: none;">
             <div id="teamPerformanceLoading" style="text-align: center; padding: 60px 20px; color: var(--text-muted);">
                 <span class="spinner"></span> Loading team performance data...
             </div>
@@ -1347,29 +1347,30 @@
 
         // Tab switching
         let teamDataLoaded = false;
+        let currentTab = 'sprint';
+
         function switchTab(tab) {
             console.log('Switching to tab:', tab);
+            currentTab = tab;
 
             // Update tab buttons
-            document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-                btn.classList.remove('active');
-                if ((tab === 'sprint' && i === 0) || (tab === 'team' && i === 1)) {
-                    btn.classList.add('active');
-                }
-            });
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            tabBtns[0].classList.toggle('active', tab === 'sprint');
+            tabBtns[1].classList.toggle('active', tab === 'team');
 
-            // Update tab content
+            // Update tab content - use direct style instead of CSS classes
             const sprintTab = document.getElementById('sprintTab');
             const teamTab = document.getElementById('teamTab');
+            const controls = document.querySelector('.controls');
 
             if (tab === 'sprint') {
-                sprintTab.classList.add('active');
-                teamTab.classList.remove('active');
-                document.querySelector('.controls').style.display = 'flex';
+                sprintTab.style.display = 'block';
+                teamTab.style.display = 'none';
+                if (controls) controls.style.display = 'flex';
             } else {
-                sprintTab.classList.remove('active');
-                teamTab.classList.add('active');
-                document.querySelector('.controls').style.display = 'none';
+                sprintTab.style.display = 'none';
+                teamTab.style.display = 'block';
+                if (controls) controls.style.display = 'none';
 
                 // Load team performance data if needed
                 if (!teamDataLoaded) {

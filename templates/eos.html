@@ -37,8 +37,8 @@
 
         /* Header */
         .header { display: flex; align-items: center; gap: 16px; padding: 20px 24px; }
-        .header .logo-img { height: 36px; border-radius: 8px; }
-        .menu-btn { background: var(--card-bg); border: 1px solid var(--card-border); color: var(--text); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+        .logo-img { height: 48px; width: auto; border-radius: 8px; }
+        .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
         .header h1 { font-size: 24px; font-weight: 700; }
 
         /* Sub-nav */
@@ -173,7 +173,7 @@
 
         /* Print */
         @media print {
-            .sidebar, .sidebar-overlay, .header, .sub-nav, .menu-btn, .btn, .rock-actions { display: none !important; }
+            .sidebar, .sidebar-overlay, .header, .sub-nav, .hamburger, .btn, .rock-actions { display: none !important; }
             body { background: white; color: #000; }
             .card, .rock-card, .vto-section { border-color: #ddd; }
             .container { max-width: 100%; }
@@ -209,8 +209,8 @@
 
     <!-- Header -->
     <div class="header">
-        <button class="menu-btn" onclick="toggleSidebar()">☰</button>
-        <a href="/"><img src="/static/logo.jpeg" alt="Pulse" class="logo-img" style="cursor: pointer;"></a>
+        <button class="hamburger" onclick="toggleSidebar()">☰</button>
+        <a href="/"><img src="/static/logo.jpeg" alt="Pulse" class="logo-img"></a>
     </div>
 
     <!-- Sub-navigation -->
