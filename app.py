@@ -525,11 +525,25 @@ def set_daily_cache(data_type: str, key: str, value):
 
     with _daily_cache_lock:
         try:
-            cache = load_daily_cache() or {}
+            # Load cache directly to avoid nested lock acquisition
+            if _daily_cache_loaded and _daily_cache:
+                cache = _daily_cache
+            elif os.path.exists(DAILY_CACHE_FILE):
+                with open(DAILY_CACHE_FILE, 'r') as f:
+                    cache = json.load(f)
+            else:
+                cache = {}
+
             if data_type not in cache:
                 cache[data_type] = {}
             cache[data_type][key] = value
-            save_daily_cache(cache)
+
+            # Save directly to avoid nested lock acquisition
+            cache['last_updated'] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
+            with open(DAILY_CACHE_FILE, 'w') as f:
+                json.dump(cache, f)
+            _daily_cache = cache
+            _daily_cache_loaded = True
         except Exception as e:
             logger.error(f"Error setting daily cache [{data_type}][{key}]: {e}")
 
