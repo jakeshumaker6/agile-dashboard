@@ -40,6 +40,8 @@
         .sidebar-item:hover { background: rgba(255,255,255,0.05); }
         .sidebar-item.active { background: var(--pulse-primary); color: white; }
         .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
+        .logo-section { display: flex; align-items: center; gap: 16px; }
+        .logo-img { height: 48px; width: auto; border-radius: 8px; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
         .header h1 { font-size: 28px; font-weight: 700; }
         .header .sprint-label { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
@@ -100,12 +102,9 @@
 
     <div class="container">
         <div class="header">
-            <div>
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <button class="hamburger" onclick="toggleSidebar()">☰</button>
-                    <h1>🗓️ Sprint Planning Assistant</h1>
-                </div>
-                <div class="sprint-label" id="sprintLabel">Loading...</div>
+            <div class="logo-section">
+                <button class="hamburger" onclick="toggleSidebar()">☰</button>
+                <a href="/"><img src="/static/logo.jpeg" alt="Pulse" class="logo-img"></a>
             </div>
         </div>
 

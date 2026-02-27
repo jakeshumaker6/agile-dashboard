@@ -36,10 +36,10 @@
         .sidebar-item.active { background: var(--pulse-primary); color: white; }
 
         /* Header */
-        .header { display: flex; align-items: center; gap: 16px; padding: 20px 24px; }
+        .header { display: flex; align-items: center; padding: 20px 24px; }
+        .logo-section { display: flex; align-items: center; gap: 16px; }
         .logo-img { height: 48px; width: auto; border-radius: 8px; }
         .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
-        .header h1 { font-size: 24px; font-weight: 700; }
 
         /* Sub-nav */
         .sub-nav { display: flex; gap: 4px; padding: 0 24px 20px; flex-wrap: wrap; }
@@ -209,8 +209,10 @@
 
     <!-- Header -->
     <div class="header">
-        <button class="hamburger" onclick="toggleSidebar()">☰</button>
-        <a href="/"><img src="/static/logo.jpeg" alt="Pulse" class="logo-img"></a>
+        <div class="logo-section">
+            <button class="hamburger" onclick="toggleSidebar()">☰</button>
+            <a href="/"><img src="/static/logo.jpeg" alt="Pulse" class="logo-img"></a>
+        </div>
     </div>
 
     <!-- Sub-navigation -->
