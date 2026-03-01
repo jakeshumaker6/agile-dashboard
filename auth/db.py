@@ -240,12 +240,12 @@ def update_user(user_id: int, **kwargs) -> bool:
     Update user fields.
 
     Supported fields: username, role, totp_secret, totp_enabled, last_2fa_at,
-    password_reset_token, password_reset_expires, invite_token, invite_expires, is_active
+    password_reset_token, password_reset_expires, invite_token, invite_expires, is_active, weekly_hours
     """
     allowed_fields = {
         'username', 'role', 'totp_secret', 'totp_enabled', 'last_2fa_at',
         'password_reset_token', 'password_reset_expires',
-        'invite_token', 'invite_expires', 'is_active', 'clickup_id'
+        'invite_token', 'invite_expires', 'is_active', 'clickup_id', 'weekly_hours'
     }
 
     # Filter to allowed fields only
