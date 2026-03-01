@@ -112,9 +112,19 @@ def init_eos_db():
     ]
     for s in vto_sections:
         conn.execute("INSERT OR IGNORE INTO eos_vto (section, content) VALUES (?, ?)", (s, '{}'))
+
+    # Migration: add team column to eos_rocks if it doesn't exist
+    try:
+        conn.execute("ALTER TABLE eos_rocks ADD COLUMN team TEXT DEFAULT 'Admin'")
+    except Exception:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
     logger.info("EOS database initialized")
+
+
+TEAMS = ["Admin", "Engineering", "Marketing"]
 
 
 TEAM_MEMBERS = [
@@ -149,7 +159,7 @@ def eos_hub():
 @eos_bp.route("/eos/rocks")
 @login_required
 def eos_rocks_page():
-    return render_template("eos.html", page="rocks", team_members=TEAM_MEMBERS, current_quarter=_current_quarter())
+    return render_template("eos.html", page="rocks", team_members=TEAM_MEMBERS, teams=TEAMS, current_quarter=_current_quarter())
 
 @eos_bp.route("/eos/issues")
 @login_required
@@ -201,9 +211,10 @@ def api_rocks_create():
         return jsonify({"error": "title and owner are required"}), 400
     with _db() as db:
         cur = db.execute(
-            "INSERT INTO eos_rocks (title, owner, quarter, status, description, due_date) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO eos_rocks (title, owner, quarter, status, description, due_date, team) VALUES (?,?,?,?,?,?,?)",
             (data["title"], data["owner"], data.get("quarter", _current_quarter()),
-             data.get("status", "on_track"), data.get("description", ""), data.get("due_date"))
+             data.get("status", "on_track"), data.get("description", ""), data.get("due_date"),
+             data.get("team", "Admin"))
         )
         db.commit()
         row = db.execute("SELECT * FROM eos_rocks WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -218,7 +229,7 @@ def api_rocks_update(rock_id):
     with _db() as db:
         fields = []
         params = []
-        for f in ["title", "owner", "quarter", "status", "description", "due_date"]:
+        for f in ["title", "owner", "quarter", "status", "description", "due_date", "team"]:
             if f in data:
                 fields.append(f"{f} = ?"); params.append(data[f])
         if not fields:
@@ -601,6 +612,7 @@ Q1_2026_ROCKS = [
         "quarter": "Q1 2026",
         "due_date": "2026-03-31",
         "status": "on_track",
+        "team": "Admin",
         "description": "Successfully complete DCC Marketing and SWG client projects within budget and timeline constraints."
     },
     {
@@ -609,6 +621,7 @@ Q1_2026_ROCKS = [
         "quarter": "Q1 2026",
         "due_date": "2026-03-31",
         "status": "on_track",
+        "team": "Admin",
         "description": "Recruit, hire, and fully onboard two developers and one marketing specialist to expand team capacity."
     },
     {
@@ -617,6 +630,7 @@ Q1_2026_ROCKS = [
         "quarter": "Q1 2026",
         "due_date": "2026-03-31",
         "status": "on_track",
+        "team": "Engineering",
         "description": "Establish and implement Agile/Scrum development processes across all engineering work."
     },
     {
@@ -625,6 +639,7 @@ Q1_2026_ROCKS = [
         "quarter": "Q1 2026",
         "due_date": "2026-03-31",
         "status": "on_track",
+        "team": "Engineering",
         "description": "Create and document the process/criteria for becoming a recognized premier Claude Code implementation shop."
     },
     {
@@ -633,6 +648,7 @@ Q1_2026_ROCKS = [
         "quarter": "Q1 2026",
         "due_date": "2026-03-31",
         "status": "on_track",
+        "team": "Admin",
         "description": "Roll out full EOS (Entrepreneurial Operating System) implementation including L10 meetings, Rocks, Scorecard, and V/TO."
     },
     {
@@ -641,6 +657,7 @@ Q1_2026_ROCKS = [
         "quarter": "Q1 2026",
         "due_date": "2026-03-31",
         "status": "on_track",
+        "team": "Marketing",
         "description": "Develop and validate a repeatable marketing playbook for generating leads and closing 2-Day AI POC engagements."
     }
 ]
@@ -673,10 +690,10 @@ def api_seed_pulse_vto():
             # Seed Q1 2026 Rocks
             for rock in Q1_2026_ROCKS:
                 db.execute(
-                    """INSERT INTO eos_rocks (title, owner, quarter, status, description, due_date)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO eos_rocks (title, owner, quarter, status, description, due_date, team)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (rock["title"], rock["owner"], rock["quarter"],
-                     rock["status"], rock["description"], rock["due_date"])
+                     rock["status"], rock["description"], rock["due_date"], rock.get("team", "Admin"))
                 )
                 results["rocks"].append(rock["title"][:40] + "...")
         else:

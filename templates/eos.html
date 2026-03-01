@@ -78,8 +78,27 @@
         .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
         .form-control { width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit; }
         .form-control:focus { outline: none; border-color: var(--pulse-primary); }
-        select.form-control { appearance: none; }
+        select.form-control {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238B95A5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+            cursor: pointer;
+        }
         textarea.form-control { resize: vertical; min-height: 80px; }
+
+        /* Team tags */
+        .team-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+        .team-tag.admin { background: rgba(232, 90, 113, 0.15); color: var(--pulse-primary); }
+        .team-tag.engineering { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+        .team-tag.marketing { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+
+        /* Icon buttons */
+        .icon-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .icon-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+        .icon-btn.danger:hover { color: var(--red); }
+        .icon-btn svg { width: 16px; height: 16px; }
 
         /* Modal */
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
@@ -458,8 +477,14 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>Team</label>
+                <select class="form-control" id="rockTeam">
+                    {% for t in teams %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Quarter</label>
-                <input class="form-control" id="rockQuarter" value="{{ current_quarter }}">
+                <select class="form-control" id="rockQuarter"></select>
             </div>
             <div class="form-group">
                 <label>Status</label>
@@ -668,6 +693,15 @@
         renderRocks(rocks);
     }
 
+    // SVG Icons
+    const editIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+    const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+
+    function getTeamClass(team) {
+        if (!team) return 'admin';
+        return team.toLowerCase().replace(/\s+/g, '-');
+    }
+
     function renderRocks(rocks) {
         const grid = document.getElementById('rocksGrid');
         const summary = document.getElementById('rocksSummary');
@@ -692,12 +726,13 @@
                 <div class="rock-header">
                     <div class="rock-title">${r.title}</div>
                     <div class="rock-actions">
-                        <button onclick="editRock(${r.id})" title="Edit">✏️</button>
-                        <button onclick="confirmDelete('Delete this rock?', () => deleteRock(${r.id}))" title="Delete">🗑️</button>
+                        <button class="icon-btn" onclick="editRock(${r.id})" title="Edit">${editIcon}</button>
+                        <button class="icon-btn danger" onclick="confirmDelete('Delete this rock?', () => deleteRock(${r.id}))" title="Delete">${deleteIcon}</button>
                     </div>
                 </div>
                 ${r.description ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">${r.description}</div>` : ''}
                 <div class="rock-meta">
+                    <span class="team-tag ${getTeamClass(r.team)}">${r.team || 'Admin'}</span>
                     <span class="avatar">${initials(r.owner)}</span>
                     <span>${r.owner}</span>
                     <span>•</span>
@@ -720,6 +755,7 @@
         document.getElementById('rockEditId').value = rock ? rock.id : '';
         document.getElementById('rockTitle').value = rock ? rock.title : '';
         document.getElementById('rockOwner').value = rock ? rock.owner : '{{ team_members[0] }}';
+        document.getElementById('rockTeam').value = rock ? (rock.team || 'Admin') : 'Admin';
         document.getElementById('rockQuarter').value = rock ? rock.quarter : QUARTER;
         document.getElementById('rockStatus').value = rock ? rock.status : 'on_track';
         document.getElementById('rockDescription').value = rock ? (rock.description || '') : '';
@@ -738,6 +774,7 @@
         const body = {
             title: document.getElementById('rockTitle').value,
             owner: document.getElementById('rockOwner').value,
+            team: document.getElementById('rockTeam').value,
             quarter: document.getElementById('rockQuarter').value,
             status: document.getElementById('rockStatus').value,
             description: document.getElementById('rockDescription').value,
@@ -758,18 +795,21 @@
         loadRocks();
     }
 
-    // Quarter dropdown - populate surrounding quarters
+    // Quarter dropdown - populate surrounding quarters for both filter and modal
     (function() {
-        const sel = document.getElementById('rockQuarterFilter');
+        const filterSel = document.getElementById('rockQuarterFilter');
+        const modalSel = document.getElementById('rockQuarter');
         const now = new Date();
         const quarters = [];
-        for (let offset = -2; offset <= 2; offset++) {
+        for (let offset = -2; offset <= 4; offset++) {
             const d = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
             const q = Math.ceil((d.getMonth() + 1) / 3);
             quarters.push(`Q${q} ${d.getFullYear()}`);
         }
         const unique = [...new Set(quarters)];
-        sel.innerHTML = unique.map(q => `<option value="${q}" ${q === QUARTER ? 'selected' : ''}>${q}</option>`).join('');
+        const optionsHtml = unique.map(q => `<option value="${q}" ${q === QUARTER ? 'selected' : ''}>${q}</option>`).join('');
+        filterSel.innerHTML = optionsHtml;
+        modalSel.innerHTML = optionsHtml;
     })();
 
     document.getElementById('rockQuarterFilter').onchange = loadRocks;
