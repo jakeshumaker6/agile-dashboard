@@ -54,9 +54,9 @@ def login():
     """Login page with email and password."""
     error = None
 
-    # If already authenticated, redirect to dashboard
+    # If already authenticated, redirect to home
     if session.get('authenticated'):
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('home'))
 
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
@@ -87,7 +87,7 @@ def login():
                     return redirect(url_for('auth.verify_2fa'))
 
                 logger.info(f"User logged in: {email}")
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('home'))
 
     return render_template('login.html', error=error)
 
@@ -128,7 +128,7 @@ def setup_2fa():
 
     # Already has 2FA enabled
     if user.get('totp_enabled'):
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('home'))
 
     error = None
 
@@ -162,7 +162,7 @@ def setup_2fa():
                         logger.warning(f"Failed to send 2FA confirmation email: {email_err}")
 
                     logger.info(f"2FA enabled for user: {user['email']}")
-                    return redirect(url_for('dashboard'))
+                    return redirect(url_for('home'))
                 except Exception as e:
                     logger.error(f"Error enabling 2FA: {e}")
                     error = "Failed to enable 2FA. Please try again."
@@ -238,7 +238,7 @@ def verify_2fa():
                 session.pop('pending_2fa', None)
 
                 logger.info(f"2FA verified for user: {user['email']}")
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('home'))
             else:
                 error = "Invalid verification code. Please try again."
 

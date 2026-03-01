@@ -108,8 +108,8 @@ def admin_required(f):
         if session.get('role') != 'admin':
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'Admin access required'}), 403
-            # Redirect non-admins to dashboard with implicit "access denied"
-            return redirect(url_for('dashboard'))
+            # Redirect non-admins to home with implicit "access denied"
+            return redirect(url_for('home'))
 
         return f(*args, **kwargs)
     return decorated_function

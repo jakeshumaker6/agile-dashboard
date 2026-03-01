@@ -1602,6 +1602,8 @@ def api_sentiment_overrides_list():
 # ============================================================================
 
 _grain_cache = {"data": None, "ts": 0}
+_accounts_cache = {"data": None, "ts": 0}
+_accounts_cache_lock = threading.Lock()
 
 def _get_cached_grain_recordings(ttl=600):
     """Return Grain recordings with a 10-min in-memory cache."""
@@ -1622,6 +1624,25 @@ def _get_cached_grain_recordings(ttl=600):
             return _grain_cache["data"] or []
 
 
+def _get_cached_accounts(ttl=300):
+    """Return ClickUp accounts with a 5-min in-memory cache."""
+    import time
+    now = time.time()
+    with _accounts_cache_lock:
+        if _accounts_cache["data"] is not None and (now - _accounts_cache["ts"]) < ttl:
+            return _accounts_cache["data"]
+    try:
+        data = fetch_active_accounts(clickup_request)
+        with _accounts_cache_lock:
+            _accounts_cache["data"] = data
+            _accounts_cache["ts"] = now
+        return data
+    except Exception as e:
+        logger.error(f"Accounts fetch failed: {e}")
+        with _accounts_cache_lock:
+            return _accounts_cache["data"] or {"clients": [], "managers": []}
+
+
 @app.route("/client-mapping")
 @admin_required
 def client_mapping():
@@ -1635,7 +1656,7 @@ def api_client_mapping():
     """Get all client mappings, unmatched recordings, and overview data (admin only)."""
     try:
         mappings = load_mappings()
-        accounts_data = fetch_active_accounts(clickup_request)
+        accounts_data = _get_cached_accounts()
         clients = accounts_data["clients"]
         managers = accounts_data["managers"]
 
@@ -1739,9 +1760,9 @@ def api_unmatched_recordings():
     """Get Grain recordings not yet matched to a client (admin only)."""
     try:
         mappings = load_mappings()
-        accounts_data = fetch_active_accounts(clickup_request)
+        accounts_data = _get_cached_accounts()
         clients = accounts_data["clients"]
-        recordings = fetch_grain_recordings()
+        recordings = _get_cached_grain_recordings()
         grain_matches = mappings.get("grain_matches", {})
 
         unmatched = []
