@@ -61,10 +61,17 @@ def init_db():
             invite_token            TEXT,
             invite_expires          TEXT,
             is_active               INTEGER DEFAULT 1,
+            weekly_hours            INTEGER DEFAULT 40,
             created_at              TEXT NOT NULL,
             updated_at              TEXT NOT NULL
         )
     """)
+    # Migration: add weekly_hours column if it doesn't exist
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN weekly_hours INTEGER DEFAULT 40")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
     """)

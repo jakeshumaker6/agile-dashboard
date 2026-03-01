@@ -472,6 +472,28 @@ def api_update_user_role(user_id):
         return jsonify({'error': 'Failed to update role'}), 500
 
 
+@auth_bp.route('/api/admin/users/<int:user_id>/hours', methods=['POST'])
+@admin_required
+def api_update_user_hours(user_id):
+    """Update a user's weekly hours (admin only)."""
+    data = request.get_json()
+    hours = data.get('hours')
+
+    try:
+        hours = int(hours)
+        if hours < 0 or hours > 80:
+            return jsonify({'error': 'Hours must be between 0 and 80'}), 400
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid hours value'}), 400
+
+    if update_user(user_id, weekly_hours=hours):
+        user = get_user_by_id(user_id)
+        logger.info(f"User {user['email']} hours changed to {hours} by {session.get('email')}")
+        return jsonify({'message': f'Hours updated to {hours}'})
+    else:
+        return jsonify({'error': 'Failed to update hours'}), 500
+
+
 @auth_bp.route('/api/admin/users/<int:user_id>/deactivate', methods=['POST'])
 @admin_required
 def api_deactivate_user(user_id):

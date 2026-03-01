@@ -218,26 +218,37 @@ def get_pulse_team_members():
 
 def build_team_capacity():
     """
-    Build team capacity dict merging:
-    1. Current Pulse team members from ClickUp
-    2. Saved capacity config (user customizations)
-    3. Known hour overrides for new members
+    Build team capacity dict from user database.
+    Falls back to saved config/defaults for users not in database.
     """
-    pulse_members = get_pulse_team_members()
-    saved_config = load_capacity_config()
+    from auth.db import get_all_users
+
     capacity = {}
 
-    for member in pulse_members:
-        name = member.get("username", "Unknown")
-        if name in saved_config:
-            # Use saved hours
-            capacity[name] = saved_config[name]
-        elif name in KNOWN_HOUR_OVERRIDES:
-            # New member with known override
-            capacity[name] = KNOWN_HOUR_OVERRIDES[name]
-        else:
-            # New member with default hours
-            capacity[name] = DEFAULT_MEMBER_HOURS
+    # First, load from user database (primary source)
+    try:
+        all_users = get_all_users()
+        for user in all_users:
+            if user.get('is_active'):
+                name = user.get('username', 'Unknown')
+                hours = user.get('weekly_hours', DEFAULT_MEMBER_HOURS)
+                capacity[name] = hours if hours else DEFAULT_MEMBER_HOURS
+    except Exception as e:
+        logger.warning(f"Could not load capacity from user database: {e}")
+
+    # Fallback: if no users in DB, use old method
+    if not capacity:
+        pulse_members = get_pulse_team_members()
+        saved_config = load_capacity_config()
+
+        for member in pulse_members:
+            name = member.get("username", "Unknown")
+            if name in saved_config:
+                capacity[name] = saved_config[name]
+            elif name in KNOWN_HOUR_OVERRIDES:
+                capacity[name] = KNOWN_HOUR_OVERRIDES[name]
+            else:
+                capacity[name] = DEFAULT_MEMBER_HOURS
 
     return capacity
 
