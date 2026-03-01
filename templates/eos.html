@@ -7,18 +7,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --pulse-navy: #0f1a2e;
-            --pulse-primary: #4f46e5;
-            --pulse-primary-hover: #4338ca;
-            --bg: #0d1117;
-            --card-bg: #161b22;
-            --card-border: #30363d;
-            --text: #c9d1d9;
-            --text-muted: #8b949e;
-            --green: #3fb950;
-            --red: #f85149;
-            --yellow: #d29922;
-            --blue: #58a6ff;
+            /* Pulse Brand Colors */
+            --pulse-primary: #E85A71;
+            --pulse-primary-hover: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --pulse-navy: #1E2A4A;
+            --bg: #0F1318;
+            --card-bg: #161B24;
+            --card-border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --green: #4ADE80;
+            --red: #F87171;
+            --yellow: #FBBF24;
+            --blue: #60A5FA;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -312,7 +314,10 @@
 
         <!-- ======================== V/TO ======================== -->
         {% if page == 'vto' %}
-        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:8px">
+            {% if session.role == 'admin' %}
+            <button class="btn btn-primary" onclick="seedPulseVto()" id="seedBtn">🌱 Load Pulse V/TO</button>
+            {% endif %}
             <button class="btn btn-ghost" onclick="window.print()">🖨️ Print</button>
         </div>
         <div id="vtoContainer">
@@ -916,6 +921,30 @@
         const section = btn.closest('.vto-section');
         section.querySelector('.vto-content').style.display = 'block';
         section.querySelector('.vto-edit').style.display = 'none';
+    }
+
+    async function seedPulseVto() {
+        if (!confirm('This will load Pulse V/TO data and Q1 2026 Rocks. Continue?')) return;
+        const btn = document.getElementById('seedBtn');
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+        try {
+            const res = await fetch('/api/eos/seed-pulse-vto', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert('V/TO and Rocks loaded successfully!');
+                loadVto();
+                btn.textContent = '✓ Loaded';
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+                btn.textContent = '🌱 Load Pulse V/TO';
+                btn.disabled = false;
+            }
+        } catch (err) {
+            alert('Error: ' + err.message);
+            btn.textContent = '🌱 Load Pulse V/TO';
+            btn.disabled = false;
+        }
     }
 
     loadVto();

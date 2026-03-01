@@ -498,3 +498,194 @@ def api_todos_archive():
         result = db.execute("DELETE FROM eos_todos WHERE status = 'done' AND completed_at < ?", (cutoff,))
         db.commit()
         return jsonify({"archived": result.rowcount})
+
+
+# ---------------------------------------------------------------------------
+# Seed V/TO and Rocks with Pulse Data
+# ---------------------------------------------------------------------------
+
+VTO_SEED_DATA = {
+    "core_values": {
+        "text": """• Unwavering Integrity
+• Trailblazing Creativity
+• Speed as a Superpower"""
+    },
+
+    "core_focus": {
+        "text": """PURPOSE/CAUSE/PASSION:
+Empowering non-Fortune 500 companies to compete and win with enterprise-level firepower, without the dysfunction, timelines, or cost that typically come with it.
+
+"Building the Deloitte Digital for the non-Fortune 500"
+
+NICHE:
+Rapid, integrated marketing and technology implementation for mid-market companies who need results now, not strategy decks later."""
+    },
+
+    "ten_year_target": {
+        "text": """$650M/yr consulting firm in Indianapolis, built with half the headcount of traditional models (averaging between 5K-10K employees as of Jan 2026)
+
+Current market leader: BCforward"""
+    },
+
+    "marketing_strategy": {
+        "text": """TARGET MARKET:
+Non-Fortune 500 companies ($1M-$100M revenue) ready to leverage AI and innovative marketing to accelerate growth
+
+3 UNIQUES:
+1. We deliver in days, not months
+2. AI-powered delivery means consistent results without the consulting firm chaos
+3. We treat scope changes like humans, not like lawyers
+
+PROVEN PROCESS:
+• Discover - Initial consultation and scoping, typically around 1 specific, but painful problem
+• Prove - Limited scope agreements to solve identified problem with speed and quality
+• Scale - Full implementation and ongoing partnership into full integrated framework
+
+GUARANTEE:
+100% satisfaction guarantee on your first project. If you're not completely satisfied, we'll refund your investment in full. No more marketing or technology nightmares."""
+    },
+
+    "three_year_picture": {
+        "text": """DATE: December 31, 2028
+
+REVENUE: $10M
+PROFIT: $5M (50% margin)
+
+MEASURABLES:
+• 150 AI POCs delivered annually ($2.25M at $15K each)
+• >$100K+ average project size
+• 90% client retention rate year-over-year
+
+WHAT DOES IT LOOK LIKE?
+Pulse is Indianapolis' lean, AI-powered consulting firm, known for implementing AI faster than traditional dev shops and taking products to market with expert care. We've become the go-to partner for companies who want enterprise-level AI development and marketing without the bloat.
+
+Our team of under 25 includes a strong developer core and a lean marketing team of killers, all leveraging AI to deliver 10x the output of traditional firms. Retainer clients dominate our revenue base, supported by 2-3 predictable lead generation channels and a thriving partner network that consistently refers high-quality opportunities.
+
+We've proven that world-class consulting doesn't require hundred-person teams—it requires the right people, the right process, and the right technology working in perfect sync."""
+    },
+
+    "one_year_plan": {
+        "text": """DATE: December 31, 2026
+
+REVENUE: $2M
+PROFIT: $1M (50% margin)
+
+MEASURABLES:
+• 10x engineering efficiency through AI implementation
+• 5 or fewer FT employees (Walter Miller, Bart Stoppel, Marketing Hire, Additional Capacity x2)
+• 60 AI POCs delivered in 2026 ($600K at $10K each, $720K at $12K each)
+
+GOALS FOR THE YEAR:
+1. Hit $2M in revenue
+2. Achieve 10x engineering efficiency with AI across all development work
+3. Scale POC offering to 60 deliveries (10/month run rate by October)
+4. Become a premier & recognized Claude Code shop"""
+    },
+
+    "quarterly_rocks_summary": {
+        "text": """Q1 2026 ROCKS (Due: March 31, 2026)
+
+1. Deliver DCC Marketing & SWG projects on time and on budget - Jake
+2. Hire & onboard 2 developers and 1 marketing specialist - Sean
+3. Implement Agile development processes - Jake
+4. Define process to become "premier" in Claude Code - Jake
+5. Implement EOS framework for leadership team across Pulse - Jake
+6. Build and prove out marketing playbook for 2-Day AI POCs - Sean"""
+    }
+}
+
+Q1_2026_ROCKS = [
+    {
+        "title": "Deliver DCC Marketing & SWG projects on time and on budget",
+        "owner": "Jake Shumaker",
+        "quarter": "Q1 2026",
+        "due_date": "2026-03-31",
+        "status": "on_track",
+        "description": "Successfully complete DCC Marketing and SWG client projects within budget and timeline constraints."
+    },
+    {
+        "title": "Hire & onboard 2 developers and 1 marketing specialist",
+        "owner": "Sean Miller",
+        "quarter": "Q1 2026",
+        "due_date": "2026-03-31",
+        "status": "on_track",
+        "description": "Recruit, hire, and fully onboard two developers and one marketing specialist to expand team capacity."
+    },
+    {
+        "title": "Implement Agile development processes",
+        "owner": "Jake Shumaker",
+        "quarter": "Q1 2026",
+        "due_date": "2026-03-31",
+        "status": "on_track",
+        "description": "Establish and implement Agile/Scrum development processes across all engineering work."
+    },
+    {
+        "title": "Define process to become 'premier' in Claude Code",
+        "owner": "Jake Shumaker",
+        "quarter": "Q1 2026",
+        "due_date": "2026-03-31",
+        "status": "on_track",
+        "description": "Create and document the process/criteria for becoming a recognized premier Claude Code implementation shop."
+    },
+    {
+        "title": "Implement EOS framework for leadership team across Pulse",
+        "owner": "Jake Shumaker",
+        "quarter": "Q1 2026",
+        "due_date": "2026-03-31",
+        "status": "on_track",
+        "description": "Roll out full EOS (Entrepreneurial Operating System) implementation including L10 meetings, Rocks, Scorecard, and V/TO."
+    },
+    {
+        "title": "Build and prove out marketing playbook for 2-Day AI POCs",
+        "owner": "Sean Miller",
+        "quarter": "Q1 2026",
+        "due_date": "2026-03-31",
+        "status": "on_track",
+        "description": "Develop and validate a repeatable marketing playbook for generating leads and closing 2-Day AI POC engagements."
+    }
+]
+
+
+@eos_bp.route("/api/eos/seed-pulse-vto", methods=["POST"])
+@login_required
+def api_seed_pulse_vto():
+    """One-time seed endpoint to populate V/TO with Pulse data. Admin only."""
+    if session.get('role') != 'admin':
+        return jsonify({"error": "Admin access required"}), 403
+
+    results = {"vto": [], "rocks": []}
+
+    with _db() as db:
+        # Seed V/TO sections
+        for section, content in VTO_SEED_DATA.items():
+            db.execute(
+                "UPDATE eos_vto SET content = ?, updated_at = ? WHERE section = ?",
+                (json.dumps(content), datetime.now().isoformat(), section)
+            )
+            results["vto"].append(section)
+
+        # Check if Q1 2026 rocks already exist
+        existing = db.execute(
+            "SELECT COUNT(*) FROM eos_rocks WHERE quarter = 'Q1 2026'"
+        ).fetchone()[0]
+
+        if existing == 0:
+            # Seed Q1 2026 Rocks
+            for rock in Q1_2026_ROCKS:
+                db.execute(
+                    """INSERT INTO eos_rocks (title, owner, quarter, status, description, due_date)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (rock["title"], rock["owner"], rock["quarter"],
+                     rock["status"], rock["description"], rock["due_date"])
+                )
+                results["rocks"].append(rock["title"][:40] + "...")
+        else:
+            results["rocks_skipped"] = f"Q1 2026 already has {existing} rocks"
+
+        db.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Pulse V/TO data seeded successfully",
+        "results": results
+    })
