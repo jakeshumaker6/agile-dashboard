@@ -28,7 +28,7 @@ def _init_resend():
     return True
 
 
-def send_invite_email(email: str, username: str, invite_token: str) -> bool:
+def send_invite_email(email: str, username: str, invite_token: str) -> dict:
     """
     Send welcome/invite email with password setup link.
 
@@ -38,11 +38,11 @@ def send_invite_email(email: str, username: str, invite_token: str) -> bool:
         invite_token: Token for password setup
 
     Returns:
-        True if email sent successfully, False otherwise
+        Dict with 'success' bool and 'error' message if failed
     """
     if not _init_resend():
         logger.warning(f"Skipping invite email to {email} - Resend not configured")
-        return False
+        return {'success': False, 'error': 'Resend API key not configured'}
 
     setup_url = f"{APP_BASE_URL}/setup-password?token={invite_token}"
 
@@ -92,10 +92,11 @@ def send_invite_email(email: str, username: str, invite_token: str) -> bool:
 
         response = resend.Emails.send(params)
         logger.info(f"Invite email sent to {email}: {response.get('id', 'unknown')}")
-        return True
+        return {'success': True}
     except Exception as e:
-        logger.error(f"Failed to send invite email to {email}: {e}")
-        return False
+        error_msg = str(e)
+        logger.error(f"Failed to send invite email to {email}: {error_msg}")
+        return {'success': False, 'error': error_msg}
 
 
 def send_password_reset_email(email: str, username: str, reset_token: str) -> bool:

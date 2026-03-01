@@ -125,13 +125,14 @@ def sync_users_from_clickup(pulse_members: List[Dict], send_invites: bool = True
 
                 # Send invite email
                 if send_invites and new_user.get('invite_token'):
-                    email_sent = send_invite_email(
+                    email_result = send_invite_email(
                         email=email,
                         username=username,
                         invite_token=new_user['invite_token']
                     )
-                    if not email_sent:
-                        results['errors'].append(f"Failed to send invite to {email}")
+                    if not email_result.get('success'):
+                        error = email_result.get('error', 'Unknown error')
+                        results['errors'].append(f"Failed to send invite to {email}: {error}")
             else:
                 results['errors'].append(f"Failed to create user {email}")
 
@@ -209,16 +210,16 @@ def resend_invite(user_id: int) -> dict:
         conn.commit()
 
         # Send the invite email
-        email_sent = send_invite_email(
+        result = send_invite_email(
             email=user['email'],
             username=user['username'],
             invite_token=token
         )
 
-        if email_sent:
+        if result.get('success'):
             return {'success': True}
         else:
-            return {'success': False, 'error': 'Failed to send email via Resend'}
+            return {'success': False, 'error': result.get('error', 'Failed to send email via Resend')}
     except Exception as e:
         logger.error(f"Error resending invite: {e}")
         return {'success': False, 'error': str(e)}
