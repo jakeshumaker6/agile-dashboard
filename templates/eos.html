@@ -107,6 +107,16 @@
         .icon-btn.danger:hover { color: var(--red); }
         .icon-btn svg { width: 16px; height: 16px; }
 
+        /* Branded icons */
+        .brand-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; margin-bottom: 12px; }
+        .brand-icon svg { width: 24px; height: 24px; }
+        .brand-icon.rocks { background: rgba(232, 90, 113, 0.15); color: var(--pulse-primary); }
+        .brand-icon.issues { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+        .brand-icon.vto { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+        .brand-icon.scorecard { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+        .brand-icon.todos { background: rgba(139, 148, 158, 0.15); color: var(--text-muted); }
+        .nav-icon { width: 16px; height: 16px; margin-right: 4px; vertical-align: -2px; }
+
         /* Modal */
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
         .modal-overlay.show { display: flex; }
@@ -246,11 +256,11 @@
     <!-- Sub-navigation -->
     <div class="sub-nav">
         <a href="/eos" class="{% if page == 'hub' %}active{% endif %}">Overview</a>
-        <a href="/eos/rocks" class="{% if page == 'rocks' %}active{% endif %}">🪨 Rocks</a>
-        <a href="/eos/issues" class="{% if page == 'issues' %}active{% endif %}">⚡ Issues <span class="badge" id="issuesBadge" style="display:none"></span></a>
-        <a href="/eos/vto" class="{% if page == 'vto' %}active{% endif %}">🔭 V/TO</a>
-        <a href="/eos/scorecard" class="{% if page == 'scorecard' %}active{% endif %}">📊 Scorecard</a>
-        <a href="/eos/todos" class="{% if page == 'todos' %}active{% endif %}">✅ To-Dos</a>
+        <a href="/eos/rocks" class="{% if page == 'rocks' %}active{% endif %}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>Rocks</a>
+        <a href="/eos/issues" class="{% if page == 'issues' %}active{% endif %}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Issues <span class="badge" id="issuesBadge" style="display:none"></span></a>
+        <a href="/eos/vto" class="{% if page == 'vto' %}active{% endif %}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M22 12c-2.667 4.667-6 7-10 7s-7.333-2.333-10-7c2.667-4.667 6-7 10-7s7.333 2.333 10 7"/></svg>V/TO</a>
+        <a href="/eos/scorecard" class="{% if page == 'scorecard' %}active{% endif %}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Scorecard</a>
+        <a href="/eos/todos" class="{% if page == 'todos' %}active{% endif %}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>To-Dos</a>
     </div>
 
     <div class="container">
@@ -258,31 +268,58 @@
         {% if page == 'hub' %}
         <div class="grid-3" id="hubGrid">
             <a href="/eos/rocks" class="hub-card">
-                <div class="icon">🪨</div>
+                <div class="brand-icon rocks">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                        <line x1="9" y1="9" x2="9.01" y2="9"/>
+                        <line x1="15" y1="9" x2="15.01" y2="9"/>
+                    </svg>
+                </div>
                 <h3>Rocks</h3>
                 <p>Quarterly goals — the 3-7 most important things to accomplish this quarter.</p>
                 <div class="hub-stat" id="hubRocksStat">—</div>
             </a>
             <a href="/eos/issues" class="hub-card">
-                <div class="icon">⚡</div>
+                <div class="brand-icon issues">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                </div>
                 <h3>Issues List</h3>
                 <p>Identify, Discuss, Solve. Track short-term and long-term issues.</p>
                 <div class="hub-stat" id="hubIssuesStat">—</div>
             </a>
             <a href="/eos/vto" class="hub-card">
-                <div class="icon">🔭</div>
+                <div class="brand-icon vto">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="2"/>
+                        <path d="M22 12c-2.667 4.667-6 7-10 7s-7.333-2.333-10-7c2.667-4.667 6-7 10-7s7.333 2.333 10 7"/>
+                    </svg>
+                </div>
                 <h3>V/TO</h3>
                 <p>Vision/Traction Organizer — your company's vision on two pages.</p>
                 <div class="hub-stat" style="font-size:14px;color:var(--text-muted)">View & Edit →</div>
             </a>
             <a href="/eos/scorecard" class="hub-card">
-                <div class="icon">📊</div>
+                <div class="brand-icon scorecard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                </div>
                 <h3>Scorecard</h3>
                 <p>Weekly measurables — 5-15 numbers that tell you how the business is doing.</p>
                 <div class="hub-stat" id="hubScorecardStat">—</div>
             </a>
             <a href="/eos/todos" class="hub-card">
-                <div class="icon">✅</div>
+                <div class="brand-icon todos">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 11 12 14 22 4"/>
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                    </svg>
+                </div>
                 <h3>To-Do List</h3>
                 <p>7-day action items. What did you commit to getting done this week?</p>
                 <div class="hub-stat" id="hubTodosStat">—</div>
