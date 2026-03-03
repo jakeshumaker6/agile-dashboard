@@ -72,6 +72,12 @@ def init_db():
         conn.commit()
     except Exception:
         pass  # Column already exists
+    # Migration: add start_date column if it doesn't exist
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN start_date TEXT")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
     """)
@@ -240,12 +246,12 @@ def update_user(user_id: int, **kwargs) -> bool:
     Update user fields.
 
     Supported fields: username, role, totp_secret, totp_enabled, last_2fa_at,
-    password_reset_token, password_reset_expires, invite_token, invite_expires, is_active, weekly_hours
+    password_reset_token, password_reset_expires, invite_token, invite_expires, is_active, weekly_hours, start_date
     """
     allowed_fields = {
         'username', 'role', 'totp_secret', 'totp_enabled', 'last_2fa_at',
         'password_reset_token', 'password_reset_expires',
-        'invite_token', 'invite_expires', 'is_active', 'clickup_id', 'weekly_hours'
+        'invite_token', 'invite_expires', 'is_active', 'clickup_id', 'weekly_hours', 'start_date'
     }
 
     # Filter to allowed fields only

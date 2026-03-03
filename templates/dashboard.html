@@ -538,20 +538,10 @@
             flex: 1;
         }
 
-        .capacity-item input {
-            width: 50px;
-            padding: 4px 8px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text);
+        .capacity-hours {
             font-size: 12px;
-            text-align: right;
-        }
-
-        .capacity-item input:focus {
-            outline: none;
-            border-color: var(--pulse-primary);
+            color: var(--text-muted);
+            font-weight: 500;
         }
 
         .capacity-summary {
@@ -1104,17 +1094,17 @@
             </div>
         </div>
 
-        <!-- Team Capacity Configuration -->
+        <!-- Team Capacity Display (Read-only, managed in User Management) -->
         <div class="capacity-panel" id="capacityPanel">
             <div class="capacity-header" onclick="toggleCapacityPanel()">
-                <h4><span>⚙️</span> Team Weekly Hours</h4>
+                <h4><span>👥</span> Team Weekly Hours</h4>
                 <span class="capacity-toggle" id="capacityToggle">▼</span>
             </div>
             <div class="capacity-grid capacity-collapsed" id="capacityGrid">
                 <!-- Populated by JavaScript -->
             </div>
-            <div class="capacity-actions capacity-collapsed" id="capacityActions" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-                <button onclick="resetCapacityToDefaults()" style="padding: 6px 12px; font-size: 12px; background: transparent; border: 1px solid var(--border);">Reset to Defaults</button>
+            <div class="capacity-note capacity-collapsed" id="capacityNote" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);">
+                Hours are managed in <a href="/admin/users" style="color: var(--pulse-primary);">User Management</a>
             </div>
             <div class="capacity-summary">
                 <span class="capacity-total">Total: <strong id="totalHours">0</strong> hrs/week</span>
@@ -1497,52 +1487,23 @@
         // Team Capacity Functions
         function toggleCapacityPanel() {
             const grid = document.getElementById('capacityGrid');
-            const actions = document.getElementById('capacityActions');
+            const note = document.getElementById('capacityNote');
             const toggle = document.getElementById('capacityToggle');
             const isCollapsed = grid.classList.contains('capacity-collapsed');
 
             if (isCollapsed) {
                 grid.classList.remove('capacity-collapsed');
-                actions.classList.remove('capacity-collapsed');
+                note.classList.remove('capacity-collapsed');
                 toggle.textContent = '▲';
             } else {
                 grid.classList.add('capacity-collapsed');
-                actions.classList.add('capacity-collapsed');
+                note.classList.add('capacity-collapsed');
                 toggle.textContent = '▼';
             }
         }
 
-        async function resetCapacityToDefaults() {
-            try {
-                // Fetch fresh team from ClickUp with default hours
-                const response = await fetch('/api/pulse-team');
-                const pulseTeam = await response.json();
-
-                // Build capacity with defaults
-                const defaultCapacity = {};
-                const knownOverrides = {
-                    "Luke Shumaker": 20,
-                    "Razvan Crisan": 10,
-                    "Adri Andika": 30,
-                };
-                for (const member of pulseTeam) {
-                    const name = member.username;
-                    defaultCapacity[name] = knownOverrides[name] || 40;
-                }
-
-                // Save to server
-                await saveCapacityToServer(defaultCapacity);
-                teamCapacity = defaultCapacity;
-                updateCapacitySummary();
-                populateCapacityGrid();
-                refreshVelocityChart();
-            } catch (error) {
-                console.error('Error resetting capacity:', error);
-            }
-        }
-
         async function loadTeamCapacity() {
-            // Fetch capacity from server (shared across all users)
+            // Fetch capacity from server (managed in User Management)
             try {
                 const response = await fetch('/api/team-capacity');
                 teamCapacity = await response.json();
@@ -1550,23 +1511,6 @@
                 populateCapacityGrid();
             } catch (error) {
                 console.error('Error loading team capacity:', error);
-            }
-        }
-
-        async function saveCapacityToServer(capacity) {
-            try {
-                const response = await fetch('/api/team-capacity', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(capacity)
-                });
-                if (!response.ok) {
-                    throw new Error('Failed to save capacity');
-                }
-                return true;
-            } catch (error) {
-                console.error('Error saving capacity:', error);
-                return false;
             }
         }
 
@@ -1582,35 +1526,12 @@
                 html += `
                     <div class="capacity-item">
                         <label>${name}</label>
-                        <input type="number"
-                               min="0"
-                               max="60"
-                               step="5"
-                               value="${hours}"
-                               data-member="${name}"
-                               onchange="updateMemberHours('${name}', this.value)">
+                        <span class="capacity-hours">${hours} hrs</span>
                     </div>
                 `;
             }
 
             grid.innerHTML = html;
-        }
-
-        async function updateMemberHours(name, value) {
-            const hours = parseInt(value) || 0;
-            teamCapacity[name] = hours;
-
-            // Save to server (shared across all users)
-            await saveCapacityToServer(teamCapacity);
-
-            // Update summary and chart
-            updateCapacitySummary();
-
-            // Re-fetch velocity to update chart with new capacity line
-            refreshVelocityChart();
-
-            // Update efficiency card with new capacity baseline
-            updateEfficiencyCard(currentPointsCompleted);
         }
 
         function updateCapacitySummary() {

@@ -1438,19 +1438,11 @@ def api_team_capacity():
 @app.route("/api/team-capacity", methods=["POST"])
 @admin_required
 def api_save_team_capacity():
-    """Save team capacity configuration (admin only)."""
-    try:
-        capacity = request.get_json()
-        if not capacity or not isinstance(capacity, dict):
-            return jsonify({"error": "Invalid capacity data"}), 400
-
-        success = save_capacity_config(capacity)
-        if success:
-            return jsonify({"status": "success", "message": "Capacity saved"})
-        return jsonify({"error": "Failed to save capacity"}), 500
-    except Exception as e:
-        logger.error(f"Error saving capacity: {e}")
-        return jsonify({"error": str(e)}), 500
+    """
+    DEPRECATED: Hours are now managed in User Management (/admin/users).
+    This endpoint is kept for backwards compatibility but does nothing.
+    """
+    return jsonify({"status": "deprecated", "message": "Hours are now managed in User Management"})
 
 
 @app.route("/api/excluded-assignees")

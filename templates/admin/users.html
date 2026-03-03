@@ -303,6 +303,7 @@
                         <th>User</th>
                         <th>Role</th>
                         <th>Hours/Week</th>
+                        <th>Start Date</th>
                         <th>2FA</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -324,6 +325,11 @@
                             <input type="number" class="hours-input" value="{{ user.weekly_hours or 40 }}" min="0" max="80"
                                 onchange="updateHours({{ user.id }}, this.value)"
                                 style="width: 60px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text); font-size: 14px; text-align: center;">
+                        </td>
+                        <td>
+                            <input type="date" class="date-input" value="{{ user.start_date or '' }}"
+                                onchange="updateStartDate({{ user.id }}, this.value)"
+                                style="padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text); font-size: 13px;">
                         </td>
                         <td>
                             {% if user.totp_enabled %}
@@ -363,7 +369,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="empty-state">
+                        <td colspan="7" class="empty-state">
                             No users found. Click "Sync from ClickUp" to import team members.
                         </td>
                     </tr>
@@ -440,6 +446,24 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ hours: parseInt(hours) })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(data.message);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            } catch (err) {
+                showToast('An error occurred', 'error');
+            }
+        }
+
+        async function updateStartDate(userId, startDate) {
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/start-date`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ start_date: startDate || null })
                 });
                 const data = await response.json();
                 if (response.ok) {

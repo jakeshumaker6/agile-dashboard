@@ -445,6 +445,8 @@ def api_admin_users():
             'totp_enabled': bool(user.get('totp_enabled')),
             'is_active': bool(user.get('is_active')),
             'has_password': bool(user.get('password_hash')),
+            'weekly_hours': user.get('weekly_hours', 40),
+            'start_date': user.get('start_date'),
             'created_at': user.get('created_at'),
         })
     return jsonify(safe_users)
@@ -492,6 +494,30 @@ def api_update_user_hours(user_id):
         return jsonify({'message': f'Hours updated to {hours}'})
     else:
         return jsonify({'error': 'Failed to update hours'}), 500
+
+
+@auth_bp.route('/api/admin/users/<int:user_id>/start-date', methods=['POST'])
+@admin_required
+def api_update_user_start_date(user_id):
+    """Update a user's start date (admin only)."""
+    data = request.get_json()
+    start_date = data.get('start_date')  # YYYY-MM-DD format or null/empty
+
+    # Validate date format if provided
+    if start_date:
+        try:
+            datetime.strptime(start_date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    else:
+        start_date = None  # Allow clearing the date
+
+    if update_user(user_id, start_date=start_date):
+        user = get_user_by_id(user_id)
+        logger.info(f"User {user['email']} start_date changed to {start_date} by {session.get('email')}")
+        return jsonify({'message': f'Start date updated'})
+    else:
+        return jsonify({'error': 'Failed to update start date'}), 500
 
 
 @auth_bp.route('/api/admin/users/<int:user_id>/deactivate', methods=['POST'])
