@@ -228,16 +228,22 @@ def build_team_capacity():
     # First, load from user database (primary source)
     try:
         all_users = get_all_users()
+        logger.info(f"build_team_capacity: Found {len(all_users)} users in database")
         for user in all_users:
             if user.get('is_active'):
                 name = user.get('username', 'Unknown')
-                hours = user.get('weekly_hours', DEFAULT_MEMBER_HOURS)
-                capacity[name] = hours if hours else DEFAULT_MEMBER_HOURS
+                hours = user.get('weekly_hours')
+                # Use default only if hours is None, not if it's 0 (which is valid)
+                if hours is None:
+                    hours = DEFAULT_MEMBER_HOURS
+                capacity[name] = hours
+                logger.info(f"build_team_capacity: {name} = {hours} hrs (from DB)")
     except Exception as e:
         logger.warning(f"Could not load capacity from user database: {e}")
 
     # Fallback: if no users in DB, use old method
     if not capacity:
+        logger.warning("build_team_capacity: No users in DB, falling back to ClickUp/config")
         pulse_members = get_pulse_team_members()
         saved_config = load_capacity_config()
 
