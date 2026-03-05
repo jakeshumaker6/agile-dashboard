@@ -50,11 +50,11 @@ def send_invite_email(email: str, username: str, invite_token: str) -> dict:
         params = {
             "from": FROM_EMAIL,
             "to": [email],
-            "subject": "Welcome to Pulse Agile Dashboard",
+            "subject": "Welcome to Pulse Internal Application",
             "html": f"""
             <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
                 <div style="text-align: center; margin-bottom: 30px;">
-                    <h1 style="color: #1E2A4A; margin: 0;">Pulse Agile Dashboard</h1>
+                    <h1 style="color: #1E2A4A; margin: 0;">Pulse Internal Application</h1>
                 </div>
 
                 <p style="color: #333; font-size: 16px; line-height: 1.6;">
@@ -62,7 +62,7 @@ def send_invite_email(email: str, username: str, invite_token: str) -> dict:
                 </p>
 
                 <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                    You've been invited to access the Pulse Agile Dashboard. Click the button below to set up your password and enable two-factor authentication.
+                    You've been invited to access the Pulse Internal Application. Click the button below to set up your password and enable two-factor authentication.
                 </p>
 
                 <div style="text-align: center; margin: 40px 0;">
@@ -84,7 +84,7 @@ def send_invite_email(email: str, username: str, invite_token: str) -> dict:
                 <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
 
                 <p style="color: #999; font-size: 12px; text-align: center;">
-                    Pulse Marketing | Agile Dashboard
+                    Pulse Marketing | Internal Application
                 </p>
             </div>
             """,
@@ -121,11 +121,11 @@ def send_password_reset_email(email: str, username: str, reset_token: str) -> bo
         params = {
             "from": FROM_EMAIL,
             "to": [email],
-            "subject": "Reset Your Password - Pulse Agile Dashboard",
+            "subject": "Reset Your Password - Pulse Internal Application",
             "html": f"""
             <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
                 <div style="text-align: center; margin-bottom: 30px;">
-                    <h1 style="color: #1E2A4A; margin: 0;">Pulse Agile Dashboard</h1>
+                    <h1 style="color: #1E2A4A; margin: 0;">Pulse Internal Application</h1>
                 </div>
 
                 <p style="color: #333; font-size: 16px; line-height: 1.6;">
@@ -155,7 +155,7 @@ def send_password_reset_email(email: str, username: str, reset_token: str) -> bo
                 <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
 
                 <p style="color: #999; font-size: 12px; text-align: center;">
-                    Pulse Marketing | Agile Dashboard
+                    Pulse Marketing | Internal Application
                 </p>
             </div>
             """,
@@ -187,11 +187,11 @@ def send_2fa_enabled_email(email: str, username: str) -> bool:
         params = {
             "from": FROM_EMAIL,
             "to": [email],
-            "subject": "Two-Factor Authentication Enabled - Pulse Agile Dashboard",
+            "subject": "Two-Factor Authentication Enabled - Pulse Internal Application",
             "html": f"""
             <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
                 <div style="text-align: center; margin-bottom: 30px;">
-                    <h1 style="color: #1E2A4A; margin: 0;">Pulse Agile Dashboard</h1>
+                    <h1 style="color: #1E2A4A; margin: 0;">Pulse Internal Application</h1>
                 </div>
 
                 <p style="color: #333; font-size: 16px; line-height: 1.6;">
@@ -211,7 +211,7 @@ def send_2fa_enabled_email(email: str, username: str) -> bool:
                 <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
 
                 <p style="color: #999; font-size: 12px; text-align: center;">
-                    Pulse Marketing | Agile Dashboard
+                    Pulse Marketing | Internal Application
                 </p>
             </div>
             """,

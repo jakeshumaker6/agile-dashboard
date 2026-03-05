@@ -35,7 +35,7 @@ def _get_conn() -> sqlite3.Connection:
     """Return a thread-local SQLite connection (created lazily)."""
     conn = getattr(_local, "conn", None)
     if conn is None:
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.row_factory = sqlite3.Row  # Enable dict-like access
         _local.conn = conn
