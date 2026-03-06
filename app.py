@@ -875,13 +875,13 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
         and monday <= t["date_closed"] <= sunday
     ]
 
-    # Tasks in "waiting response" count as effectively completed
-    # (blocked on client, not a reflection of team performance)
-    awaiting_response_tasks = [
+    # Tasks in "awaiting response" or "in review" count as effectively completed
+    # (blocked on client or pending review, not a reflection of team output)
+    effectively_completed = [
         t for t in all_tasks
-        if not t["is_complete"] and t["status"].lower() == "awaiting response"
+        if not t["is_complete"] and t["status"].lower() in ("awaiting response", "in review")
     ]
-    completed_this_week = completed_this_week + awaiting_response_tasks
+    completed_this_week = completed_this_week + effectively_completed
 
     # Tasks planned for next week (backlog status, not complete)
     tasks_next_week = [
@@ -890,8 +890,8 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
     ]
 
     # Tasks currently in progress (not complete, not backlog/to do)
-    # "waiting response" excluded — counted as completed above
-    active_statuses = ["in progress", "in review", "doing", "active", "working"]
+    # "awaiting response" and "in review" excluded — counted as completed above
+    active_statuses = ["in progress", "doing", "active", "working"]
     tasks_in_progress = [
         t for t in all_tasks
         if not t["is_complete"] and t["status"].lower() in active_statuses
@@ -1889,15 +1889,15 @@ def api_team_performance():
             member_tasks = [t for t in all_tasks if any(a["id"] == mid for a in t["assignees"])]
 
             # --- 8-week velocity + tasks-per-week ---
-            # "waiting response" tasks count as completed for current week only
-            awaiting = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "awaiting response"]
+            # "awaiting response" and "in review" tasks count as completed for current week only
+            effectively_done = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() in ("awaiting response", "in review")]
             weekly_points = []
             weekly_tasks = []
             for offset in range(0, -8, -1):
                 mon, sun = get_week_bounds(week_offset=offset)
                 completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and mon <= t["date_closed"] <= sun]
                 if offset == 0:
-                    completed = completed + awaiting
+                    completed = completed + effectively_done
                 pts = sum(t["score"] or 0 for t in completed)
                 weekly_points.append({"week": mon.strftime("%b %d"), "points": pts})
                 weekly_tasks.append({"week": mon.strftime("%b %d"), "tasks": len(completed)})
@@ -1927,8 +1927,8 @@ def api_team_performance():
             avg_close_days = round(sum(close_times) / len(close_times), 1) if close_times else None
 
             # --- Workload distribution ---
-            # "waiting response" excluded — counted as completed above
-            active_statuses = ["in progress", "in review", "doing", "active", "working"]
+            # "awaiting response" and "in review" excluded — counted as completed above
+            active_statuses = ["in progress", "doing", "active", "working"]
             in_progress = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() in active_statuses]
             backlog = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "backlog"]
 
@@ -1941,7 +1941,7 @@ def api_team_performance():
             # --- Current week points ---
             cur_mon, cur_sun = get_week_bounds(week_offset=0)
             cur_completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and cur_mon <= t["date_closed"] <= cur_sun]
-            cur_completed = cur_completed + awaiting  # Include "waiting response" tasks
+            cur_completed = cur_completed + effectively_done  # Include "awaiting response" and "in review" tasks
             current_week_points = sum(t["score"] or 0 for t in cur_completed)
 
             # --- Utilization rate ---
@@ -2020,14 +2020,14 @@ def api_team_performance_member(member_id):
                 break
 
         # 8-week detailed history
-        # "waiting response" tasks count as completed for current week only
-        awaiting = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "awaiting response"]
+        # "awaiting response" and "in review" tasks count as completed for current week only
+        effectively_done = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() in ("awaiting response", "in review")]
         weekly_data = []
         for offset in range(0, -8, -1):
             mon, sun = get_week_bounds(week_offset=offset)
             completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and mon <= t["date_closed"] <= sun]
             if offset == 0:
-                completed = completed + awaiting
+                completed = completed + effectively_done
             pts = sum(t["score"] or 0 for t in completed)
 
             on_time = sum(1 for t in completed if t["due_date"] and t["date_closed"] <= t["due_date"])
@@ -2151,8 +2151,8 @@ def api_sprint_planning():
         backlog_tasks.sort(key=lambda x: x["priority"])
 
         # ── Team capacity & workload ──
-        # "waiting response" excluded — counted as completed, not in-progress workload
-        active_statuses = ["in progress", "in review", "doing", "active", "working"]
+        # "awaiting response" and "in review" excluded — counted as completed, not in-progress workload
+        active_statuses = ["in progress", "doing", "active", "working"]
         team_data = []
         for member in pulse_members:
             mid = member["id"]
