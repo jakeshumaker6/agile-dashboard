@@ -23,7 +23,7 @@ from sentiment_overrides import load_overrides, save_override, delete_override, 
 from client_mappings import load_mappings, save_email_mapping, save_grain_match
 from auth import auth_bp, login_required, admin_required, init_db as init_auth_db
 from eos import eos_bp, init_eos_db
-from capacity_planning import cp_bp, init_cp_db
+from capacity_planning import cp_bp, init_cp_db, sync_projects_from_clickup as cp_sync
 from auth.user_sync import sync_users_from_clickup
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -94,6 +94,20 @@ def _clear_request_caches():
 init_auth_db()
 init_eos_db()
 init_cp_db()
+
+# Auto-sync capacity planning projects on startup if DB is empty
+def _cp_initial_sync():
+    """Run initial ClickUp sync for capacity planning if no projects exist."""
+    try:
+        from capacity_planning import _db
+        with _db() as db:
+            count = db.execute("SELECT COUNT(*) FROM cp_projects").fetchone()[0]
+        if count == 0:
+            logger.info("Capacity planning DB is empty — running initial sync from ClickUp")
+            result = cp_sync(clickup_request)
+            logger.info(f"Initial capacity planning sync: {result}")
+    except Exception as e:
+        logger.warning(f"Initial capacity planning sync failed (will retry on schedule): {e}")
 
 # Fibonacci score option IDs (for reverse lookup)
 SCORE_OPTIONS = {
@@ -2347,6 +2361,10 @@ if os.environ.get('WERKZEUG_RUN_MAIN') != 'true' or not app.debug:
         import threading
         logger.info("Client health cache is empty — triggering first-run build")
         threading.Thread(target=refresh_client_health_cache, daemon=True).start()
+
+    # First-run: if capacity planning DB is empty, sync from ClickUp in background
+    import threading
+    threading.Thread(target=_cp_initial_sync, daemon=True).start()
 
 
 if __name__ == "__main__":

@@ -246,9 +246,13 @@ def _get_engineers_with_colors():
     from auth.db import get_all_users
 
     users = get_all_users()
-    with _db() as db:
-        color_rows = db.execute("SELECT * FROM cp_engineer_colors").fetchall()
-    color_map = {r["user_id"]: r["color"] for r in color_rows}
+    try:
+        with _db() as db:
+            color_rows = db.execute("SELECT * FROM cp_engineer_colors").fetchall()
+        color_map = {r["user_id"]: r["color"] for r in color_rows}
+    except Exception as e:
+        logger.warning(f"Failed to load engineer colors: {e}")
+        color_map = {}
 
     engineers = []
     for user in users:
@@ -263,6 +267,11 @@ def _get_engineers_with_colors():
 
 def _assign_color_if_needed(user_id):
     """Auto-assign a color to an engineer if they don't have one."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return ENGINEER_COLORS[0]
+
     with _db() as db:
         existing = db.execute(
             "SELECT color FROM cp_engineer_colors WHERE user_id = ?",
@@ -283,7 +292,7 @@ def _assign_color_if_needed(user_id):
 
         now = datetime.now(timezone.utc).isoformat()
         db.execute(
-            "INSERT INTO cp_engineer_colors (user_id, color, updated_at) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO cp_engineer_colors (user_id, color, updated_at) VALUES (?, ?, ?)",
             (user_id, color, now)
         )
         return color
@@ -307,8 +316,12 @@ def capacity_planning_page():
 @login_required
 def api_cp_projects():
     """Get all visible projects with engineer info."""
-    engineers = _get_engineers_with_colors()
-    eng_map = {e["id"]: e for e in engineers}
+    try:
+        engineers = _get_engineers_with_colors()
+        eng_map = {e["id"]: e for e in engineers}
+    except Exception as e:
+        logger.error(f"Failed to load engineers: {e}", exc_info=True)
+        eng_map = {}
 
     with _db() as db:
         rows = db.execute(
@@ -317,32 +330,38 @@ def api_cp_projects():
 
     projects = []
     for row in _rows_to_list(rows):
-        eng_id = row.get("assigned_engineer_id")
-        engineer = None
-        if eng_id and eng_id in eng_map:
-            engineer = {
-                "id": eng_map[eng_id]["id"],
-                "username": eng_map[eng_id]["username"],
-                "color": eng_map[eng_id].get("color"),
-            }
+        try:
+            eng_id = row.get("assigned_engineer_id")
+            if eng_id is not None:
+                eng_id = int(eng_id)
+            engineer = None
+            if eng_id and eng_id in eng_map:
+                engineer = {
+                    "id": eng_map[eng_id]["id"],
+                    "username": eng_map[eng_id]["username"],
+                    "color": eng_map[eng_id].get("color"),
+                }
 
-        difficulty = row.get("difficulty", "medium")
-        total_pts = row.get("total_points", 0)
-        complexity_label = f"{total_pts} pts / {difficulty.capitalize()}"
+            difficulty = row.get("difficulty", "medium") or "medium"
+            total_pts = row.get("total_points", 0) or 0
+            complexity_label = f"{total_pts} pts / {difficulty.capitalize()}"
 
-        projects.append({
-            "id": row["id"],
-            "clickup_list_id": row["clickup_list_id"],
-            "name": row["name"],
-            "folder_name": row.get("folder_name", ""),
-            "assigned_engineer": engineer,
-            "start_date": row.get("start_date"),
-            "end_date": row.get("end_date"),
-            "difficulty": difficulty,
-            "total_points": total_pts,
-            "task_count": row.get("task_count", 0),
-            "complexity_label": complexity_label,
-        })
+            projects.append({
+                "id": row["id"],
+                "clickup_list_id": row["clickup_list_id"],
+                "name": row["name"],
+                "folder_name": row.get("folder_name", ""),
+                "assigned_engineer": engineer,
+                "start_date": row.get("start_date"),
+                "end_date": row.get("end_date"),
+                "difficulty": difficulty,
+                "total_points": total_pts,
+                "task_count": row.get("task_count", 0) or 0,
+                "complexity_label": complexity_label,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to process project row {row.get('id', '?')}: {e}")
+            continue
 
     return jsonify({"projects": projects})
 
@@ -363,6 +382,15 @@ def api_cp_update_project(project_id):
     # Validate difficulty
     if "difficulty" in updates and updates["difficulty"] not in ("easy", "medium", "hard", "complex"):
         return jsonify({"error": "Invalid difficulty. Use: easy, medium, hard, complex"}), 400
+
+    # Ensure engineer ID is stored as integer
+    if "assigned_engineer_id" in updates:
+        val = updates["assigned_engineer_id"]
+        if val is not None:
+            try:
+                updates["assigned_engineer_id"] = int(val)
+            except (TypeError, ValueError):
+                updates["assigned_engineer_id"] = None
 
     # Auto-assign color if engineer is being assigned
     if updates.get("assigned_engineer_id"):

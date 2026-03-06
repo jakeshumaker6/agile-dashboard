@@ -270,6 +270,16 @@
                 fetch('/api/capacity-planning/projects'),
                 fetch('/api/capacity-planning/engineers'),
             ]);
+            if (!projRes.ok) {
+                const errText = await projRes.text();
+                console.error('Projects API error:', projRes.status, errText);
+                throw new Error(`Projects API returned ${projRes.status}`);
+            }
+            if (!engRes.ok) {
+                const errText = await engRes.text();
+                console.error('Engineers API error:', engRes.status, errText);
+                throw new Error(`Engineers API returned ${engRes.status}`);
+            }
             const projData = await projRes.json();
             const engData = await engRes.json();
             allProjects = projData.projects || [];
@@ -280,7 +290,7 @@
             renderUnscheduled();
         } catch (err) {
             console.error('Failed to load data:', err);
-            document.getElementById('gantt-target').innerHTML = '<div class="loading">Failed to load capacity planning data.</div>';
+            document.getElementById('gantt-target').innerHTML = '<div class="loading">Failed to load capacity planning data. Check console for details.</div>';
         }
     }
 
@@ -339,32 +349,38 @@
         injectEngineerStyles();
 
         target.innerHTML = '';
-        ganttInstance = new Gantt(target, tasks, {
-            view_mode: currentViewMode,
-            date_format: 'YYYY-MM-DD',
-            on_click: task => openPanel(parseInt(task.id)),
-            on_date_change: isAdmin ? (task, start, end) => {
-                const startStr = formatDate(start);
-                const endStr = formatDate(end);
-                updateProject(parseInt(task.id), { start_date: startStr, end_date: endStr });
-            } : undefined,
-            custom_popup_html: task => {
-                const proj = allProjects.find(p => p.id === parseInt(task.id));
-                if (!proj) return '';
-                return `
-                    <div style="padding:8px;font-size:13px;max-width:280px;">
-                        <div style="font-weight:600;margin-bottom:4px;">${proj.name}</div>
-                        <div style="color:var(--text-muted);font-size:12px;">${proj.folder_name}</div>
-                        <div style="margin-top:6px;">${proj.complexity_label}</div>
-                        <div style="margin-top:4px;">${proj.assigned_engineer?.username || 'Unassigned'}</div>
-                    </div>
-                `;
-            },
-        });
+        try {
+            ganttInstance = new Gantt(target, tasks, {
+                view_mode: currentViewMode,
+                date_format: 'YYYY-MM-DD',
+                on_click: task => openPanel(parseInt(task.id)),
+                on_date_change: isAdmin ? (task, start, end) => {
+                    const startStr = formatDate(start);
+                    const endStr = formatDate(end);
+                    updateProject(parseInt(task.id), { start_date: startStr, end_date: endStr });
+                } : undefined,
+                custom_popup_html: task => {
+                    const proj = allProjects.find(p => p.id === parseInt(task.id));
+                    if (!proj) return '';
+                    return `
+                        <div style="padding:8px;font-size:13px;max-width:280px;">
+                            <div style="font-weight:600;margin-bottom:4px;">${proj.name}</div>
+                            <div style="color:var(--text-muted);font-size:12px;">${proj.folder_name}</div>
+                            <div style="margin-top:6px;">${proj.complexity_label}</div>
+                            <div style="margin-top:4px;">${proj.assigned_engineer?.username || 'Unassigned'}</div>
+                        </div>
+                    `;
+                },
+            });
 
-        // Enable drag handles for admin
-        if (isAdmin) {
-            target.querySelector('.gantt')?.classList.add('admin-mode');
+            // Enable drag handles for admin
+            if (isAdmin) {
+                target.querySelector('.gantt')?.classList.add('admin-mode');
+            }
+        } catch (err) {
+            console.error('Gantt render error:', err);
+            target.innerHTML = '<div class="empty-state">Error rendering Gantt chart. Check console for details.</div>';
+            ganttInstance = null;
         }
     }
 
