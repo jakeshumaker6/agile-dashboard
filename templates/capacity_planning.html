@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capacity Planning | Pulse</title>
+    <link rel="icon" href="/static/logo.jpeg" type="image/jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-dark: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --pulse-navy: #1E2A4A;
+            --pulse-navy-light: #2D3D5E;
+            --bg-dark: #0F1318;
+            --bg-card: #161B24;
+            --bg-card-hover: #1D242F;
+            --border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --success: #4ADE80;
+            --warning: #FBBF24;
+            --danger: #F87171;
+        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg-dark); color: var(--text); min-height: 100vh; padding: 24px; }
+        .container { max-width: 1600px; margin: 0 auto; }
+
+        /* Sidebar */
+        .sidebar { position: fixed; top: 0; left: -280px; width: 280px; height: 100vh; background: var(--pulse-navy); transition: left 0.3s ease; z-index: 999; padding: 24px 0; }
+        .sidebar.open { left: 0; }
+        .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 998; display: none; }
+        .sidebar-overlay.visible { display: block; }
+        .sidebar-brand { padding: 0 24px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-brand img { height: 36px; border-radius: 6px; }
+        .sidebar-brand span { font-size: 16px; font-weight: 600; color: #fff; }
+        .sidebar-item { padding: 12px 24px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px; font-size: 14px; transition: background 0.2s; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-item.active { background: var(--pulse-primary); color: white; }
+        .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
+
+        /* Header */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+        .header h1 { font-size: 28px; font-weight: 700; }
+        .logo-section { display: flex; align-items: center; gap: 16px; }
+        .logo-img { height: 48px; width: auto; border-radius: 8px; }
+
+        /* Controls */
+        .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+        .controls select, .controls input[type="date"] {
+            padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-card); color: var(--text); font-size: 13px; font-family: inherit;
+        }
+        .controls label { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
+        .btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; transition: all 0.2s; }
+        .btn-primary { background: var(--pulse-primary); color: white; }
+        .btn-primary:hover { background: var(--pulse-primary-dark); }
+        .btn-secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--bg-card-hover); }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+        /* View mode tabs */
+        .view-tabs { display: flex; gap: 4px; background: var(--bg-card); border-radius: 8px; padding: 3px; border: 1px solid var(--border); }
+        .view-tab { padding: 6px 14px; border-radius: 6px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 12px; font-family: inherit; font-weight: 500; transition: all 0.2s; }
+        .view-tab.active { background: var(--pulse-primary); color: white; }
+
+        /* Legend */
+        .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+        .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+        /* Gantt container */
+        .gantt-wrapper { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; margin-bottom: 24px; }
+        .gantt-wrapper .gantt-container { min-height: 200px; }
+
+        /* Frappe Gantt dark theme overrides */
+        .gantt .grid-background { fill: var(--bg-card); }
+        .gantt .grid-header { fill: var(--bg-dark); stroke: var(--border); }
+        .gantt .grid-row { fill: var(--bg-card); }
+        .gantt .grid-row:nth-child(even) { fill: #131820; }
+        .gantt .row-line { stroke: var(--border); stroke-opacity: 0.4; }
+        .gantt .tick { stroke: var(--border); stroke-opacity: 0.3; }
+        .gantt .today-highlight { fill: rgba(232, 90, 113, 0.08); }
+        .gantt .lower-text { fill: var(--text-muted); font-size: 11px; }
+        .gantt .upper-text { fill: var(--text); font-size: 12px; font-weight: 600; }
+        .gantt .bar-label { fill: #fff; font-size: 11px; font-weight: 500; }
+        .gantt .bar-wrapper:hover .bar { filter: brightness(1.15); }
+        .gantt .handle-group { display: none; }
+        .gantt.admin-mode .handle-group { display: initial; }
+        .gantt .popup-wrapper { max-width: 300px; }
+        .gantt .popup-wrapper .title { font-weight: 600; color: var(--text); }
+
+        /* Card */
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+        .card h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+
+        /* Unscheduled table */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 10px 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); font-weight: 500; }
+        td { padding: 10px 12px; border-bottom: 1px solid rgba(42,51,68,0.5); }
+        tr:hover { background: var(--bg-card-hover); }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-easy { background: rgba(74,222,128,0.15); color: var(--success); }
+        .badge-medium { background: rgba(251,191,36,0.15); color: var(--warning); }
+        .badge-hard { background: rgba(248,113,113,0.15); color: var(--danger); }
+        .badge-complex { background: rgba(167,139,250,0.15); color: #A78BFA; }
+        .badge-pts { background: rgba(232,90,113,0.2); color: var(--pulse-primary); }
+
+        /* Side panel */
+        .panel-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; display: none; }
+        .panel-overlay.visible { display: block; }
+        .side-panel { position: fixed; top: 0; right: -420px; width: 420px; height: 100vh; background: var(--bg-card); border-left: 1px solid var(--border); z-index: 1001; transition: right 0.3s ease; overflow-y: auto; }
+        .side-panel.open { right: 0; }
+        .panel-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .panel-header h3 { font-size: 16px; font-weight: 600; }
+        .panel-close { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 4px; }
+        .panel-body { padding: 24px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-group select, .form-group input[type="date"] {
+            width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-dark); color: var(--text); font-size: 14px; font-family: inherit;
+        }
+        .form-group .info-value { font-size: 15px; font-weight: 500; }
+        .panel-actions { margin-top: 24px; display: flex; gap: 8px; }
+
+        /* Toast */
+        .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); font-size: 13px; z-index: 2000; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { border-color: var(--danger); color: var(--danger); }
+
+        .loading { text-align: center; padding: 60px; color: var(--text-muted); }
+        a { color: var(--pulse-primary); text-decoration: none; }
+        .empty-state { text-align: center; padding: 40px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
+        <a href="/" class="sidebar-brand" style="text-decoration: none;">
+            <img src="/static/logo.jpeg" alt="Pulse">
+            <span>Pulse</span>
+        </a>
+        <a href="/" class="sidebar-item">Home</a>
+        <a href="/dashboard" class="sidebar-item">Sprint Dashboard</a>
+        <a href="/client-health" class="sidebar-item">Client Health</a>
+        <a href="/eos" class="sidebar-item">EOS Tools</a>
+        <a href="/capacity-planning" class="sidebar-item active">Capacity Planning</a>
+        {% if session.role == 'admin' %}
+        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);"></div>
+        <a href="/client-mapping" class="sidebar-item">Client Mapping</a>
+        <a href="/admin/users" class="sidebar-item">User Management</a>
+        <a href="/sprint-planning" class="sidebar-item">Sprint Planning</a>
+        {% endif %}
+        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <a href="/settings" class="sidebar-item">Settings</a>
+            <a href="/logout" class="sidebar-item">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <div class="logo-section">
+                <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
+                <h1>Capacity Planning</h1>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                {% if session.role == 'admin' %}
+                <button class="btn btn-secondary btn-sm" onclick="syncFromClickUp()" id="syncBtn">Sync ClickUp</button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <div class="view-tabs">
+                <button class="view-tab" data-mode="Day" onclick="setViewMode('Day', this)">Day</button>
+                <button class="view-tab active" data-mode="Week" onclick="setViewMode('Week', this)">Week</button>
+                <button class="view-tab" data-mode="Month" onclick="setViewMode('Month', this)">Month</button>
+            </div>
+            <label>From</label>
+            <input type="date" id="dateFrom" onchange="applyDateFilter()">
+            <label>To</label>
+            <input type="date" id="dateTo" onchange="applyDateFilter()">
+            <select id="engineerFilter" onchange="applyEngineerFilter()">
+                <option value="">All Engineers</option>
+            </select>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend" id="legend"></div>
+
+        <!-- Gantt Chart -->
+        <div class="gantt-wrapper">
+            <div id="gantt-target"></div>
+        </div>
+
+        <!-- Unscheduled Projects -->
+        <div class="card" id="unscheduled-section" style="display:none;">
+            <h2>Unscheduled Projects</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Project</th>
+                        <th>Folder</th>
+                        <th>Points</th>
+                        <th>Tasks</th>
+                        <th>Difficulty</th>
+                        <th>Engineer</th>
+                        {% if session.role == 'admin' %}<th>Actions</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody id="unscheduled-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
+    <div class="side-panel" id="sidePanel">
+        <div class="panel-header">
+            <h3 id="panelTitle">Project Details</h3>
+            <button class="panel-close" onclick="closePanel()">&times;</button>
+        </div>
+        <div class="panel-body" id="panelBody"></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+<script>
+    const isAdmin = {{ 'true' if session.role == 'admin' else 'false' }};
+    let ganttInstance = null;
+    let allProjects = [];
+    let allEngineers = [];
+    let currentViewMode = 'Week';
+
+    // ── Sidebar ──
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('visible'); }
+    function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('visible'); }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSidebar(); closePanel(); } });
+
+    // ── Toast ──
+    function showToast(msg, type = 'success') {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'toast ' + type + ' show';
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ── Date defaults (rolling 3 months) ──
+    function initDateRange() {
+        const now = new Date();
+        const from = new Date(now);
+        from.setMonth(from.getMonth() - 1);
+        const to = new Date(now);
+        to.setMonth(to.getMonth() + 2);
+        document.getElementById('dateFrom').value = from.toISOString().split('T')[0];
+        document.getElementById('dateTo').value = to.toISOString().split('T')[0];
+    }
+
+    // ── Load data ──
+    async function loadData() {
+        try {
+            const [projRes, engRes] = await Promise.all([
+                fetch('/api/capacity-planning/projects'),
+                fetch('/api/capacity-planning/engineers'),
+            ]);
+            const projData = await projRes.json();
+            const engData = await engRes.json();
+            allProjects = projData.projects || [];
+            allEngineers = engData.engineers || [];
+            populateEngineerFilter();
+            renderLegend();
+            renderGantt();
+            renderUnscheduled();
+        } catch (err) {
+            console.error('Failed to load data:', err);
+            document.getElementById('gantt-target').innerHTML = '<div class="loading">Failed to load capacity planning data.</div>';
+        }
+    }
+
+    // ── Populate engineer filter ──
+    function populateEngineerFilter() {
+        const sel = document.getElementById('engineerFilter');
+        sel.innerHTML = '<option value="">All Engineers</option>';
+        const assigned = new Set(allProjects.map(p => p.assigned_engineer?.id).filter(Boolean));
+        allEngineers.filter(e => assigned.has(e.id)).forEach(e => {
+            sel.innerHTML += `<option value="${e.id}">${e.username}</option>`;
+        });
+    }
+
+    // ── Legend ──
+    function renderLegend() {
+        const container = document.getElementById('legend');
+        const assigned = new Map();
+        allProjects.forEach(p => {
+            if (p.assigned_engineer) assigned.set(p.assigned_engineer.id, p.assigned_engineer);
+        });
+        let html = '';
+        assigned.forEach(eng => {
+            html += `<div class="legend-item"><div class="legend-swatch" style="background:${eng.color || '#555'}"></div>${eng.username}</div>`;
+        });
+        if (html === '') html = '<div class="legend-item" style="color:var(--text-muted)">No engineers assigned yet</div>';
+        html += `<div class="legend-item"><div class="legend-swatch" style="background:#555"></div>Unassigned</div>`;
+        container.innerHTML = html;
+    }
+
+    // ── Render Gantt ──
+    function renderGantt() {
+        const target = document.getElementById('gantt-target');
+        const filterEng = document.getElementById('engineerFilter').value;
+
+        // Filter to scheduled projects
+        let scheduled = allProjects.filter(p => p.start_date && p.end_date);
+        if (filterEng) scheduled = scheduled.filter(p => p.assigned_engineer?.id === parseInt(filterEng));
+
+        if (scheduled.length === 0) {
+            target.innerHTML = '<div class="empty-state">No scheduled projects to display. Assign dates to projects below.</div>';
+            ganttInstance = null;
+            return;
+        }
+
+        // Build Gantt tasks
+        const tasks = scheduled.map(p => ({
+            id: String(p.id),
+            name: `${p.name} (${p.complexity_label})`,
+            start: p.start_date,
+            end: p.end_date,
+            progress: 0,
+            custom_class: p.assigned_engineer ? `eng-${p.assigned_engineer.id}` : 'eng-unassigned',
+        }));
+
+        // Inject dynamic engineer color styles
+        injectEngineerStyles();
+
+        target.innerHTML = '';
+        ganttInstance = new Gantt(target, tasks, {
+            view_mode: currentViewMode,
+            date_format: 'YYYY-MM-DD',
+            on_click: task => openPanel(parseInt(task.id)),
+            on_date_change: isAdmin ? (task, start, end) => {
+                const startStr = formatDate(start);
+                const endStr = formatDate(end);
+                updateProject(parseInt(task.id), { start_date: startStr, end_date: endStr });
+            } : undefined,
+            custom_popup_html: task => {
+                const proj = allProjects.find(p => p.id === parseInt(task.id));
+                if (!proj) return '';
+                return `
+                    <div style="padding:8px;font-size:13px;max-width:280px;">
+                        <div style="font-weight:600;margin-bottom:4px;">${proj.name}</div>
+                        <div style="color:var(--text-muted);font-size:12px;">${proj.folder_name}</div>
+                        <div style="margin-top:6px;">${proj.complexity_label}</div>
+                        <div style="margin-top:4px;">${proj.assigned_engineer?.username || 'Unassigned'}</div>
+                    </div>
+                `;
+            },
+        });
+
+        // Enable drag handles for admin
+        if (isAdmin) {
+            target.querySelector('.gantt')?.classList.add('admin-mode');
+        }
+    }
+
+    function injectEngineerStyles() {
+        // Remove old styles
+        document.querySelectorAll('style[data-engineer]').forEach(s => s.remove());
+        const style = document.createElement('style');
+        style.setAttribute('data-engineer', 'true');
+        let css = `.eng-unassigned .bar-progress, .eng-unassigned .bar { fill: #555; }\n`;
+        allEngineers.forEach(eng => {
+            if (eng.color) {
+                css += `.eng-${eng.id} .bar-progress, .eng-${eng.id} .bar { fill: ${eng.color}; }\n`;
+            }
+        });
+        // Also handle projects whose engineers have colors from the project data
+        allProjects.forEach(p => {
+            if (p.assigned_engineer?.color) {
+                css += `.eng-${p.assigned_engineer.id} .bar-progress, .eng-${p.assigned_engineer.id} .bar { fill: ${p.assigned_engineer.color}; }\n`;
+            }
+        });
+        style.textContent = css;
+        document.head.appendChild(style);
+    }
+
+    // ── Render Unscheduled ──
+    function renderUnscheduled() {
+        const unscheduled = allProjects.filter(p => !p.start_date || !p.end_date);
+        const section = document.getElementById('unscheduled-section');
+        const tbody = document.getElementById('unscheduled-body');
+
+        if (unscheduled.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+        section.style.display = '';
+
+        tbody.innerHTML = unscheduled.map(p => `
+            <tr>
+                <td style="font-weight:500;">${p.name}</td>
+                <td style="color:var(--text-muted);">${p.folder_name}</td>
+                <td><span class="badge badge-pts">${p.total_points} pts</span></td>
+                <td>${p.task_count}</td>
+                <td><span class="badge badge-${p.difficulty}">${p.difficulty.charAt(0).toUpperCase() + p.difficulty.slice(1)}</span></td>
+                <td>${p.assigned_engineer?.username || '<span style="color:var(--text-muted)">Unassigned</span>'}</td>
+                ${isAdmin ? `<td><button class="btn btn-primary btn-sm" onclick="openPanel(${p.id})">Edit</button></td>` : ''}
+            </tr>
+        `).join('');
+    }
+
+    // ── Side Panel ──
+    function openPanel(projectId) {
+        const proj = allProjects.find(p => p.id === projectId);
+        if (!proj) return;
+
+        document.getElementById('panelTitle').textContent = proj.name;
+        const body = document.getElementById('panelBody');
+
+        if (isAdmin) {
+            body.innerHTML = `
+                <div class="form-group">
+                    <label>Folder</label>
+                    <div class="info-value">${proj.folder_name}</div>
+                </div>
+                <div class="form-group">
+                    <label>Points / Tasks</label>
+                    <div class="info-value">${proj.total_points} pts across ${proj.task_count} tasks</div>
+                </div>
+                <div class="form-group">
+                    <label>Assigned Engineer</label>
+                    <select id="panelEngineer">
+                        <option value="">Unassigned</option>
+                        ${allEngineers.map(e => `<option value="${e.id}" ${proj.assigned_engineer?.id === e.id ? 'selected' : ''}>${e.username}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Start Date</label>
+                    <input type="date" id="panelStartDate" value="${proj.start_date || ''}">
+                </div>
+                <div class="form-group">
+                    <label>End Date</label>
+                    <input type="date" id="panelEndDate" value="${proj.end_date || ''}">
+                </div>
+                <div class="form-group">
+                    <label>Difficulty</label>
+                    <select id="panelDifficulty">
+                        <option value="easy" ${proj.difficulty === 'easy' ? 'selected' : ''}>Easy</option>
+                        <option value="medium" ${proj.difficulty === 'medium' ? 'selected' : ''}>Medium</option>
+                        <option value="hard" ${proj.difficulty === 'hard' ? 'selected' : ''}>Hard</option>
+                        <option value="complex" ${proj.difficulty === 'complex' ? 'selected' : ''}>Complex</option>
+                    </select>
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-primary" onclick="savePanel(${proj.id})">Save</button>
+                    <button class="btn btn-secondary" onclick="closePanel()">Cancel</button>
+                </div>
+            `;
+        } else {
+            body.innerHTML = `
+                <div class="form-group">
+                    <label>Folder</label>
+                    <div class="info-value">${proj.folder_name}</div>
+                </div>
+                <div class="form-group">
+                    <label>Points / Tasks</label>
+                    <div class="info-value">${proj.total_points} pts across ${proj.task_count} tasks</div>
+                </div>
+                <div class="form-group">
+                    <label>Assigned Engineer</label>
+                    <div class="info-value">${proj.assigned_engineer?.username || 'Unassigned'}</div>
+                </div>
+                <div class="form-group">
+                    <label>Timeline</label>
+                    <div class="info-value">${proj.start_date || 'Not set'} to ${proj.end_date || 'Not set'}</div>
+                </div>
+                <div class="form-group">
+                    <label>Difficulty</label>
+                    <div class="info-value"><span class="badge badge-${proj.difficulty}">${proj.difficulty.charAt(0).toUpperCase() + proj.difficulty.slice(1)}</span></div>
+                </div>
+            `;
+        }
+
+        document.getElementById('sidePanel').classList.add('open');
+        document.getElementById('panelOverlay').classList.add('visible');
+    }
+
+    function closePanel() {
+        document.getElementById('sidePanel').classList.remove('open');
+        document.getElementById('panelOverlay').classList.remove('visible');
+    }
+
+    async function savePanel(projectId) {
+        const data = {
+            assigned_engineer_id: parseInt(document.getElementById('panelEngineer').value) || null,
+            start_date: document.getElementById('panelStartDate').value || null,
+            end_date: document.getElementById('panelEndDate').value || null,
+            difficulty: document.getElementById('panelDifficulty').value,
+        };
+        await updateProject(projectId, data);
+        closePanel();
+    }
+
+    // ── Update project ──
+    async function updateProject(projectId, data) {
+        try {
+            const res = await fetch(`/api/capacity-planning/projects/${projectId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const result = await res.json();
+            if (res.ok) {
+                showToast('Project updated');
+                await loadData();
+            } else {
+                showToast(result.error || 'Update failed', 'error');
+            }
+        } catch (err) {
+            showToast('An error occurred', 'error');
+        }
+    }
+
+    // ── View mode ──
+    function setViewMode(mode, btn) {
+        currentViewMode = mode;
+        document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        if (ganttInstance) {
+            ganttInstance.change_view_mode(mode);
+        }
+    }
+
+    // ── Filters ──
+    function applyDateFilter() {
+        renderGantt();
+    }
+    function applyEngineerFilter() {
+        renderGantt();
+    }
+
+    // ── Sync ──
+    async function syncFromClickUp() {
+        const btn = document.getElementById('syncBtn');
+        btn.disabled = true;
+        btn.textContent = 'Syncing...';
+        try {
+            const res = await fetch('/api/capacity-planning/sync', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                showToast(`Synced: ${data.created || 0} new, ${data.synced || 0} updated`);
+                await loadData();
+            } else {
+                showToast(data.error || 'Sync failed', 'error');
+            }
+        } catch (err) {
+            showToast('Sync failed', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Sync ClickUp';
+        }
+    }
+
+    // ── Helpers ──
+    function formatDate(d) {
+        if (typeof d === 'string') return d;
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // ── Init ──
+    initDateRange();
+    loadData();
+</script>
+</body>
+</html>

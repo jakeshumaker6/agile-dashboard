@@ -23,6 +23,7 @@ from sentiment_overrides import load_overrides, save_override, delete_override, 
 from client_mappings import load_mappings, save_email_mapping, save_grain_match
 from auth import auth_bp, login_required, admin_required, init_db as init_auth_db
 from eos import eos_bp, init_eos_db
+from capacity_planning import cp_bp, init_cp_db
 from auth.user_sync import sync_users_from_clickup
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -80,6 +81,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 # Register auth blueprint
 app.register_blueprint(auth_bp)
 app.register_blueprint(eos_bp)
+app.register_blueprint(cp_bp)
 
 
 @app.before_request
@@ -91,6 +93,7 @@ def _clear_request_caches():
 # Initialize auth database on startup
 init_auth_db()
 init_eos_db()
+init_cp_db()
 
 # Fibonacci score option IDs (for reverse lookup)
 SCORE_OPTIONS = {
@@ -2308,8 +2311,19 @@ def init_scheduler():
         replace_existing=True
     )
 
+    # Capacity planning sync daily at 2:05pm ET (after main cache refresh)
+    from capacity_planning import sync_projects_from_clickup as cp_sync
+    cp_trigger = CronTrigger(hour=14, minute=5, timezone=eastern)
+    scheduler.add_job(
+        func=lambda: cp_sync(clickup_request),
+        trigger=cp_trigger,
+        id='capacity_planning_sync',
+        name='Sync capacity planning projects daily at 2:05pm ET',
+        replace_existing=True
+    )
+
     scheduler.start()
-    logger.info("Scheduler started - agile cache, client health, user sync all at 2pm ET")
+    logger.info("Scheduler started - agile cache, client health, user sync, capacity planning all at 2pm ET")
 
     # Ensure scheduler shuts down cleanly
     atexit.register(lambda: scheduler.shutdown())
