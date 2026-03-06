@@ -200,6 +200,27 @@
             <div id="gantt-target"></div>
         </div>
 
+        <!-- Annual / Long-Term Projects -->
+        <div class="card" id="longterm-section" style="display:none;">
+            <h2>Annual / Long-Term Projects</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Project</th>
+                        <th>Folder</th>
+                        <th>Points</th>
+                        <th>Tasks</th>
+                        <th>Difficulty</th>
+                        <th>Engineer</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        {% if session.role == 'admin' %}<th>Actions</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody id="longterm-body"></tbody>
+            </table>
+        </div>
+
         <!-- Unscheduled Projects -->
         <div class="card" id="unscheduled-section" style="display:none;">
             <h2>Unscheduled Projects</h2>
@@ -287,6 +308,7 @@
             populateEngineerFilter();
             renderLegend();
             renderGantt();
+            renderLongTerm();
             renderUnscheduled();
         } catch (err) {
             console.error('Failed to load data:', err);
@@ -325,8 +347,12 @@
         const target = document.getElementById('gantt-target');
         const filterEng = document.getElementById('engineerFilter').value;
 
-        // Filter to scheduled projects
-        let scheduled = allProjects.filter(p => p.start_date && p.end_date);
+        // Filter to scheduled projects, separating long-term (365+ days)
+        const LONG_TERM_DAYS = 365;
+        let scheduled = allProjects.filter(p => p.start_date && p.end_date).filter(p => {
+            const days = (new Date(p.end_date) - new Date(p.start_date)) / (1000 * 60 * 60 * 24);
+            return days < LONG_TERM_DAYS;
+        });
         if (filterEng) scheduled = scheduled.filter(p => p.assigned_engineer?.id === parseInt(filterEng));
 
         if (scheduled.length === 0) {
@@ -425,6 +451,40 @@
                 <td>${p.task_count}</td>
                 <td><span class="badge badge-${p.difficulty}">${p.difficulty.charAt(0).toUpperCase() + p.difficulty.slice(1)}</span></td>
                 <td>${p.assigned_engineer?.username || '<span style="color:var(--text-muted)">Unassigned</span>'}</td>
+                ${isAdmin ? `<td><button class="btn btn-primary btn-sm" onclick="openPanel(${p.id})">Edit</button></td>` : ''}
+            </tr>
+        `).join('');
+    }
+
+    // ── Render Long-Term Projects ──
+    function renderLongTerm() {
+        const LONG_TERM_DAYS = 365;
+        const filterEng = document.getElementById('engineerFilter').value;
+        let longTerm = allProjects.filter(p => p.start_date && p.end_date).filter(p => {
+            const days = (new Date(p.end_date) - new Date(p.start_date)) / (1000 * 60 * 60 * 24);
+            return days >= LONG_TERM_DAYS;
+        });
+        if (filterEng) longTerm = longTerm.filter(p => p.assigned_engineer?.id === parseInt(filterEng));
+
+        const section = document.getElementById('longterm-section');
+        const tbody = document.getElementById('longterm-body');
+
+        if (longTerm.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+        section.style.display = '';
+
+        tbody.innerHTML = longTerm.map(p => `
+            <tr>
+                <td style="font-weight:500;">${p.name}</td>
+                <td style="color:var(--text-muted);">${p.folder_name}</td>
+                <td><span class="badge badge-pts">${p.total_points} pts</span></td>
+                <td>${p.task_count}</td>
+                <td><span class="badge badge-${p.difficulty}">${p.difficulty.charAt(0).toUpperCase() + p.difficulty.slice(1)}</span></td>
+                <td>${p.assigned_engineer?.username || '<span style="color:var(--text-muted)">Unassigned</span>'}</td>
+                <td>${p.start_date}</td>
+                <td>${p.end_date}</td>
                 ${isAdmin ? `<td><button class="btn btn-primary btn-sm" onclick="openPanel(${p.id})">Edit</button></td>` : ''}
             </tr>
         `).join('');
@@ -558,6 +618,7 @@
     }
     function applyEngineerFilter() {
         renderGantt();
+        renderLongTerm();
     }
 
     // ── Sync ──
