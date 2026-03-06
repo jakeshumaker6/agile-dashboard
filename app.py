@@ -879,7 +879,7 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
     # (blocked on client, not a reflection of team performance)
     awaiting_response_tasks = [
         t for t in all_tasks
-        if not t["is_complete"] and t["status"].lower() == "waiting response"
+        if not t["is_complete"] and t["status"].lower() == "awaiting response"
     ]
     completed_this_week = completed_this_week + awaiting_response_tasks
 
@@ -1890,7 +1890,7 @@ def api_team_performance():
 
             # --- 8-week velocity + tasks-per-week ---
             # "waiting response" tasks count as completed for current week only
-            awaiting = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "waiting response"]
+            awaiting = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "awaiting response"]
             weekly_points = []
             weekly_tasks = []
             for offset in range(0, -8, -1):
@@ -2021,7 +2021,7 @@ def api_team_performance_member(member_id):
 
         # 8-week detailed history
         # "waiting response" tasks count as completed for current week only
-        awaiting = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "waiting response"]
+        awaiting = [t for t in member_tasks if not t["is_complete"] and t["status"].lower() == "awaiting response"]
         weekly_data = []
         for offset in range(0, -8, -1):
             mon, sun = get_week_bounds(week_offset=offset)
