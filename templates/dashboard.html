@@ -1466,6 +1466,7 @@
         }
 
         let currentWeekOffset = 0;
+        let refreshRequestId = 0; // Track latest request to prevent race conditions
         let velocityChart = null;
         let distributionChart = null;
         let dailyChart = null;
@@ -1728,6 +1729,7 @@
         }
 
         async function refreshData(showOverlay = false) {
+            const thisRequestId = ++refreshRequestId;
             const refreshBtn = document.getElementById('refreshBtn');
             const spinner = document.getElementById('refreshSpinner');
             refreshBtn.disabled = true;
@@ -1745,6 +1747,9 @@
                 const metricsUrl = `/api/metrics?week_offset=${currentWeekOffset}${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
                 const metricsResponse = await fetch(metricsUrl);
                 const metrics = await metricsResponse.json();
+
+                // If a newer request was made while this one was in flight, discard this result
+                if (thisRequestId !== refreshRequestId) return;
 
                 // Update week label
                 document.getElementById('weekLabel').textContent = metrics.week.label;
@@ -1775,6 +1780,7 @@
                 // Load daily averages
                 const dailyAvgUrl = `/api/daily-averages?weeks=8${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
                 const dailyAvgResponse = await fetch(dailyAvgUrl);
+                if (thisRequestId !== refreshRequestId) return;
                 const dailyAverages = await dailyAvgResponse.json();
 
                 // Update daily breakdown chart with averages
@@ -1789,6 +1795,7 @@
                 // Load velocity history
                 const velocityUrl = `/api/velocity?weeks=8${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
                 const velocityResponse = await fetch(velocityUrl);
+                if (thisRequestId !== refreshRequestId) return;
                 const velocity = await velocityResponse.json();
                 updateVelocityChart(velocity);
 
