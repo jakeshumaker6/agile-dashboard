@@ -185,6 +185,7 @@
         <div class="header">
             <div class="logo-section">
                 <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
+                <a href="/"><img src="/static/logo.jpeg" alt="Pulse" class="logo-img"></a>
                 <h1>Capacity Planning</h1>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -368,6 +369,10 @@
         // Filter to scheduled standard projects (not long-term)
         let scheduled = allProjects.filter(p => p.start_date && p.end_date && (p.project_type || 'standard') === 'standard');
         if (filterEng) scheduled = scheduled.filter(p => (p.assigned_engineers || []).some(e => e.id === parseInt(filterEng)));
+        const dateFrom = document.getElementById('dateFrom').value;
+        const dateTo = document.getElementById('dateTo').value;
+        if (dateFrom) scheduled = scheduled.filter(p => p.end_date >= dateFrom);
+        if (dateTo) scheduled = scheduled.filter(p => p.start_date <= dateTo);
 
         if (scheduled.length === 0) {
             target.innerHTML = '<div class="empty-state">No scheduled projects to display. Assign dates to projects below.</div>';
@@ -493,6 +498,10 @@
         const filterEng = document.getElementById('engineerFilter').value;
         let longTerm = allProjects.filter(p => p.start_date && p.end_date && (p.project_type || 'standard') === 'long_term');
         if (filterEng) longTerm = longTerm.filter(p => (p.assigned_engineers || []).some(e => e.id === parseInt(filterEng)));
+        const dateFrom = document.getElementById('dateFrom').value;
+        const dateTo = document.getElementById('dateTo').value;
+        if (dateFrom) longTerm = longTerm.filter(p => p.end_date >= dateFrom);
+        if (dateTo) longTerm = longTerm.filter(p => p.start_date <= dateTo);
 
         const section = document.getElementById('longterm-gantt-section');
         const target = document.getElementById('longterm-gantt-target');
@@ -731,6 +740,7 @@
     // ── Filters ──
     function applyDateFilter() {
         renderGantt();
+        renderLongTermGantt();
         loadBandwidth();
     }
     function applyEngineerFilter() {
@@ -882,6 +892,10 @@
                         titleColor: '#E8EAED',
                         bodyColor: '#E8EAED',
                         padding: 12,
+                        filter: tooltipItem => {
+                            const label = tooltipItem.dataset.label;
+                            return !label.includes('Baseline') && !label.includes('Target');
+                        },
                         callbacks: {
                             label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} pts`,
                         },
