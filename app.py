@@ -340,7 +340,7 @@ def _write_task_cache(tasks: list):
     for task in tasks:
         # Serialize datetimes for JSON storage
         serializable = dict(task)
-        for k in ("date_closed", "date_created", "due_date"):
+        for k in ("date_closed", "date_created", "date_updated", "due_date"):
             if serializable.get(k) and isinstance(serializable[k], datetime):
                 serializable[k] = serializable[k].isoformat()
         conn.execute("INSERT OR REPLACE INTO task_cache (id, data) VALUES (?, ?)",
@@ -364,7 +364,7 @@ def _read_task_cache() -> list:
         for (data_str,) in rows:
             task = json.loads(data_str)
             # Deserialize datetimes
-            for k in ("date_closed", "date_created", "due_date"):
+            for k in ("date_closed", "date_created", "date_updated", "due_date"):
                 if task.get(k) and isinstance(task[k], str):
                     try:
                         task[k] = datetime.fromisoformat(task[k])
