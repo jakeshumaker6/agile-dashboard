@@ -7,10 +7,11 @@ All users can view; only admins can edit.
 """
 
 import os
+import math
 import sqlite3
 import logging
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Blueprint, render_template, jsonify, request, session
 from auth import login_required, admin_required
 
@@ -108,11 +109,38 @@ def init_cp_db():
             updated_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS cp_project_engineers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(project_id, user_id),
+            FOREIGN KEY (project_id) REFERENCES cp_projects(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_cp_projects_list_id
             ON cp_projects(clickup_list_id);
         CREATE INDEX IF NOT EXISTS idx_cp_projects_engineer
             ON cp_projects(assigned_engineer_id);
+        CREATE INDEX IF NOT EXISTS idx_cp_pe_project
+            ON cp_project_engineers(project_id);
+        CREATE INDEX IF NOT EXISTS idx_cp_pe_user
+            ON cp_project_engineers(user_id);
     """)
+
+    # Migrate existing assigned_engineer_id data into junction table
+    now = datetime.now(timezone.utc).isoformat()
+    rows = conn.execute(
+        "SELECT id, assigned_engineer_id FROM cp_projects "
+        "WHERE assigned_engineer_id IS NOT NULL"
+    ).fetchall()
+    for row in rows:
+        conn.execute(
+            "INSERT OR IGNORE INTO cp_project_engineers (project_id, user_id, created_at) "
+            "VALUES (?, ?, ?)",
+            (row["id"], row["assigned_engineer_id"], now)
+        )
+
     conn.close()
     logger.info("Capacity planning database initialized")
 
@@ -265,6 +293,40 @@ def _get_engineers_with_colors():
     return engineers
 
 
+def _get_all_project_engineers(db):
+    """Load all project→engineer assignments as a dict keyed by project_id."""
+    from auth.db import get_all_users
+
+    users = get_all_users()
+    user_map = {u["id"]: u for u in users}
+
+    try:
+        color_rows = db.execute("SELECT * FROM cp_engineer_colors").fetchall()
+        color_map = {r["user_id"]: r["color"] for r in color_rows}
+    except Exception:
+        color_map = {}
+
+    rows = db.execute(
+        "SELECT project_id, user_id FROM cp_project_engineers ORDER BY id"
+    ).fetchall()
+
+    result = {}
+    for row in rows:
+        pid = row["project_id"]
+        uid = row["user_id"]
+        user = user_map.get(uid)
+        if not user:
+            continue
+        if pid not in result:
+            result[pid] = []
+        result[pid].append({
+            "id": uid,
+            "username": user["username"],
+            "color": color_map.get(uid),
+        })
+    return result
+
+
 def _assign_color_if_needed(user_id):
     """Auto-assign a color to an engineer if they don't have one."""
     try:
@@ -316,14 +378,8 @@ def capacity_planning_page():
 @login_required
 def api_cp_projects():
     """Get all visible projects with engineer info."""
-    try:
-        engineers = _get_engineers_with_colors()
-        eng_map = {e["id"]: e for e in engineers}
-    except Exception as e:
-        logger.error(f"Failed to load engineers: {e}", exc_info=True)
-        eng_map = {}
-
     with _db() as db:
+        proj_engineers = _get_all_project_engineers(db)
         rows = db.execute(
             "SELECT * FROM cp_projects WHERE is_visible = 1 ORDER BY folder_name, name"
         ).fetchall()
@@ -331,33 +387,41 @@ def api_cp_projects():
     projects = []
     for row in _rows_to_list(rows):
         try:
-            eng_id = row.get("assigned_engineer_id")
-            if eng_id is not None:
-                eng_id = int(eng_id)
-            engineer = None
-            if eng_id and eng_id in eng_map:
-                engineer = {
-                    "id": eng_map[eng_id]["id"],
-                    "username": eng_map[eng_id]["username"],
-                    "color": eng_map[eng_id].get("color"),
-                }
+            engineers = proj_engineers.get(row["id"], [])
+            # Backwards compat: first engineer or None
+            first_eng = engineers[0] if engineers else None
 
             difficulty = row.get("difficulty", "medium") or "medium"
             total_pts = row.get("total_points", 0) or 0
             complexity_label = f"{total_pts} pts / {difficulty.capitalize()}"
+
+            # Calculate avg points per week
+            avg_pts_week = None
+            start = row.get("start_date")
+            end = row.get("end_date")
+            if start and end and total_pts:
+                try:
+                    d_start = datetime.strptime(start, "%Y-%m-%d")
+                    d_end = datetime.strptime(end, "%Y-%m-%d")
+                    weeks = max(1, math.ceil((d_end - d_start).days / 7))
+                    avg_pts_week = round(total_pts / weeks, 1)
+                except ValueError:
+                    pass
 
             projects.append({
                 "id": row["id"],
                 "clickup_list_id": row["clickup_list_id"],
                 "name": row["name"],
                 "folder_name": row.get("folder_name", ""),
-                "assigned_engineer": engineer,
-                "start_date": row.get("start_date"),
-                "end_date": row.get("end_date"),
+                "assigned_engineers": engineers,
+                "assigned_engineer": first_eng,
+                "start_date": start,
+                "end_date": end,
                 "difficulty": difficulty,
                 "total_points": total_pts,
                 "task_count": row.get("task_count", 0) or 0,
                 "complexity_label": complexity_label,
+                "avg_points_per_week": avg_pts_week,
             })
         except Exception as e:
             logger.warning(f"Failed to process project row {row.get('id', '?')}: {e}")
@@ -374,39 +438,72 @@ def api_cp_update_project(project_id):
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    allowed = {"start_date", "end_date", "assigned_engineer_id", "difficulty"}
+    # Handle engineer IDs — accept both new array and legacy single ID
+    engineer_ids = None
+    if "assigned_engineer_ids" in data:
+        raw = data["assigned_engineer_ids"]
+        if isinstance(raw, list):
+            engineer_ids = []
+            for v in raw:
+                try:
+                    engineer_ids.append(int(v))
+                except (TypeError, ValueError):
+                    pass
+        data.pop("assigned_engineer_ids")
+    elif "assigned_engineer_id" in data:
+        val = data.pop("assigned_engineer_id")
+        if val is not None:
+            try:
+                engineer_ids = [int(val)]
+            except (TypeError, ValueError):
+                engineer_ids = []
+        else:
+            engineer_ids = []
+
+    allowed = {"start_date", "end_date", "difficulty"}
     updates = {k: v for k, v in data.items() if k in allowed}
-    if not updates:
-        return jsonify({"error": "No valid fields to update"}), 400
 
     # Validate difficulty
     if "difficulty" in updates and updates["difficulty"] not in ("easy", "medium", "hard", "complex"):
         return jsonify({"error": "Invalid difficulty. Use: easy, medium, hard, complex"}), 400
 
-    # Ensure engineer ID is stored as integer
-    if "assigned_engineer_id" in updates:
-        val = updates["assigned_engineer_id"]
-        if val is not None:
-            try:
-                updates["assigned_engineer_id"] = int(val)
-            except (TypeError, ValueError):
-                updates["assigned_engineer_id"] = None
-
-    # Auto-assign color if engineer is being assigned
-    if updates.get("assigned_engineer_id"):
-        _assign_color_if_needed(updates["assigned_engineer_id"])
+    if not updates and engineer_ids is None:
+        return jsonify({"error": "No valid fields to update"}), 400
 
     now = datetime.now(timezone.utc).isoformat()
     updates["updated_at"] = now
 
     with _db() as db:
+        row = db.execute("SELECT * FROM cp_projects WHERE id = ?", (project_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Project not found"}), 404
+
+        # Update project fields
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [project_id]
         db.execute(f"UPDATE cp_projects SET {set_clause} WHERE id = ?", values)
 
+        # Update engineer assignments via junction table
+        if engineer_ids is not None:
+            db.execute(
+                "DELETE FROM cp_project_engineers WHERE project_id = ?",
+                (project_id,)
+            )
+            for uid in engineer_ids:
+                _assign_color_if_needed(uid)
+                db.execute(
+                    "INSERT OR IGNORE INTO cp_project_engineers (project_id, user_id, created_at) "
+                    "VALUES (?, ?, ?)",
+                    (project_id, uid, now)
+                )
+            # Backwards compat: keep assigned_engineer_id in sync
+            first_id = engineer_ids[0] if engineer_ids else None
+            db.execute(
+                "UPDATE cp_projects SET assigned_engineer_id = ? WHERE id = ?",
+                (first_id, project_id)
+            )
+
         row = db.execute("SELECT * FROM cp_projects WHERE id = ?", (project_id,)).fetchone()
-        if not row:
-            return jsonify({"error": "Project not found"}), 404
 
     return jsonify({"message": "Project updated", "project": _row_to_dict(row)})
 
@@ -448,6 +545,99 @@ def api_cp_update_engineer_color(user_id):
             )
 
     return jsonify({"message": "Color updated"})
+
+
+# ---------------------------------------------------------------------------
+# API: Bandwidth
+# ---------------------------------------------------------------------------
+
+@cp_bp.route("/api/capacity-planning/bandwidth")
+@login_required
+def api_cp_bandwidth():
+    """Get week-by-week point load per engineer for a date range."""
+    start_str = request.args.get("start")
+    end_str = request.args.get("end")
+    if not start_str or not end_str:
+        return jsonify({"error": "start and end query params required"}), 400
+
+    try:
+        range_start = datetime.strptime(start_str, "%Y-%m-%d")
+        range_end = datetime.strptime(end_str, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    # Build list of week start dates (Monday-aligned)
+    # Align range_start to its Monday
+    week_start = range_start - timedelta(days=range_start.weekday())
+    weeks = []
+    while week_start <= range_end:
+        weeks.append(week_start)
+        week_start += timedelta(days=7)
+
+    if not weeks:
+        return jsonify({"weeks": [], "engineers": []})
+
+    with _db() as db:
+        proj_engineers = _get_all_project_engineers(db)
+        rows = db.execute(
+            "SELECT * FROM cp_projects WHERE is_visible = 1 "
+            "AND start_date IS NOT NULL AND end_date IS NOT NULL"
+        ).fetchall()
+
+    # Get user weekly_hours
+    from auth.db import get_all_users
+    users = get_all_users()
+    user_hours = {u["id"]: u.get("weekly_hours") or 40 for u in users}
+
+    # Build per-engineer weekly load
+    # engineer_load[user_id][week_index] = points
+    engineer_load = {}
+    engineer_info = {}
+
+    for row in _rows_to_list(rows):
+        try:
+            p_start = datetime.strptime(row["start_date"], "%Y-%m-%d")
+            p_end = datetime.strptime(row["end_date"], "%Y-%m-%d")
+        except ValueError:
+            continue
+
+        total_pts = row.get("total_points", 0) or 0
+        if total_pts == 0:
+            continue
+
+        duration_weeks = max(1, math.ceil((p_end - p_start).days / 7))
+        engineers = proj_engineers.get(row["id"], [])
+        if not engineers:
+            continue
+
+        pts_per_engineer_per_week = total_pts / duration_weeks / len(engineers)
+
+        for eng in engineers:
+            uid = eng["id"]
+            if uid not in engineer_load:
+                engineer_load[uid] = [0.0] * len(weeks)
+                engineer_info[uid] = eng
+
+            for i, wk in enumerate(weeks):
+                wk_end = wk + timedelta(days=6)
+                # Check if this project overlaps this week
+                if p_start <= wk_end and p_end >= wk:
+                    engineer_load[uid][i] += pts_per_engineer_per_week
+
+    # Build response
+    week_labels = [w.strftime("%Y-%m-%d") for w in weeks]
+    engineers_out = []
+    for uid, load in sorted(engineer_load.items(), key=lambda x: engineer_info[x[0]]["username"]):
+        info = engineer_info[uid]
+        engineers_out.append({
+            "id": uid,
+            "username": info["username"],
+            "color": info.get("color"),
+            "weekly_hours": user_hours.get(uid, 40),
+            "weekly_load": [round(v, 1) for v in load],
+        })
+
+    return jsonify({"weeks": week_labels, "engineers": engineers_out})
 
 
 # ---------------------------------------------------------------------------

@@ -129,6 +129,14 @@
         .form-group .info-value { font-size: 15px; font-weight: 500; }
         .panel-actions { margin-top: 24px; display: flex; gap: 8px; }
 
+        /* Bandwidth cells */
+        .bw-cell { text-align: center; font-size: 12px; font-weight: 500; min-width: 60px; }
+        .bw-light { background: rgba(74,222,128,0.1); color: var(--success); }
+        .bw-moderate { background: rgba(251,191,36,0.12); color: var(--warning); }
+        .bw-heavy { background: rgba(248,113,113,0.12); color: var(--danger); }
+        .bw-none { color: var(--text-muted); opacity: 0.4; }
+        .bw-eng-cell { white-space: nowrap; }
+
         /* Toast */
         .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); font-size: 13px; z-index: 2000; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; }
         .toast.show { opacity: 1; transform: translateY(0); }
@@ -198,6 +206,17 @@
         <!-- Gantt Chart -->
         <div class="gantt-wrapper">
             <div id="gantt-target"></div>
+        </div>
+
+        <!-- Engineer Bandwidth -->
+        <div class="card" id="bandwidth-section" style="display:none;">
+            <h2>Engineer Bandwidth <span style="font-size:13px;font-weight:400;color:var(--text-muted);margin-left:8px;">Points per week by engineer</span></h2>
+            <div style="overflow-x:auto;">
+                <table id="bandwidth-table">
+                    <thead id="bandwidth-head"></thead>
+                    <tbody id="bandwidth-body"></tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Annual / Long-Term Projects -->
@@ -308,6 +327,7 @@
             populateEngineerFilter();
             renderLegend();
             renderGantt();
+            loadBandwidth();
             renderLongTerm();
             renderUnscheduled();
         } catch (err) {
@@ -320,7 +340,8 @@
     function populateEngineerFilter() {
         const sel = document.getElementById('engineerFilter');
         sel.innerHTML = '<option value="">All Engineers</option>';
-        const assigned = new Set(allProjects.map(p => p.assigned_engineer?.id).filter(Boolean));
+        const assigned = new Set();
+        allProjects.forEach(p => (p.assigned_engineers || []).forEach(e => assigned.add(e.id)));
         allEngineers.filter(e => assigned.has(e.id)).forEach(e => {
             sel.innerHTML += `<option value="${e.id}">${e.username}</option>`;
         });
@@ -331,7 +352,7 @@
         const container = document.getElementById('legend');
         const assigned = new Map();
         allProjects.forEach(p => {
-            if (p.assigned_engineer) assigned.set(p.assigned_engineer.id, p.assigned_engineer);
+            (p.assigned_engineers || []).forEach(e => assigned.set(e.id, e));
         });
         let html = '';
         assigned.forEach(eng => {
@@ -353,7 +374,7 @@
             const days = (new Date(p.end_date) - new Date(p.start_date)) / (1000 * 60 * 60 * 24);
             return days < LONG_TERM_DAYS;
         });
-        if (filterEng) scheduled = scheduled.filter(p => p.assigned_engineer?.id === parseInt(filterEng));
+        if (filterEng) scheduled = scheduled.filter(p => (p.assigned_engineers || []).some(e => e.id === parseInt(filterEng)));
 
         if (scheduled.length === 0) {
             target.innerHTML = '<div class="empty-state">No scheduled projects to display. Assign dates to projects below.</div>';
@@ -368,7 +389,7 @@
             start: p.start_date,
             end: p.end_date,
             progress: 0,
-            custom_class: p.assigned_engineer ? `eng-${p.assigned_engineer.id}` : 'eng-unassigned',
+            custom_class: p.assigned_engineers?.length ? `eng-${p.assigned_engineers[0].id}` : 'eng-unassigned',
         }));
 
         // Inject dynamic engineer color styles
@@ -388,12 +409,23 @@
                 custom_popup_html: task => {
                     const proj = allProjects.find(p => p.id === parseInt(task.id));
                     if (!proj) return '';
+                    const engNames = proj.assigned_engineers?.length
+                        ? proj.assigned_engineers.map(e => e.username).join(', ')
+                        : 'Unassigned';
+                    const diffClass = `badge-${proj.difficulty}`;
+                    const avgPts = proj.avg_points_per_week != null
+                        ? `~${proj.avg_points_per_week} pts/week`
+                        : '';
                     return `
-                        <div style="padding:8px;font-size:13px;max-width:280px;">
-                            <div style="font-weight:600;margin-bottom:4px;">${proj.name}</div>
-                            <div style="color:var(--text-muted);font-size:12px;">${proj.folder_name}</div>
-                            <div style="margin-top:6px;">${proj.complexity_label}</div>
-                            <div style="margin-top:4px;">${proj.assigned_engineer?.username || 'Unassigned'}</div>
+                        <div style="padding:10px 12px;font-size:13px;max-width:300px;line-height:1.5;">
+                            <div style="font-weight:600;font-size:14px;margin-bottom:2px;">${proj.name}</div>
+                            <div style="color:var(--text-muted);font-size:12px;margin-bottom:8px;">${proj.folder_name}</div>
+                            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                                <span class="badge badge-pts">${proj.total_points} pts</span>
+                                <span class="badge ${diffClass}">${proj.difficulty.charAt(0).toUpperCase() + proj.difficulty.slice(1)}</span>
+                                ${avgPts ? `<span style="font-size:11px;color:var(--text-muted);">${avgPts}</span>` : ''}
+                            </div>
+                            <div style="font-size:12px;"><span style="color:var(--text-muted);">Engineers:</span> ${engNames}</div>
                         </div>
                     `;
                 },
@@ -423,9 +455,11 @@
         });
         // Also handle projects whose engineers have colors from the project data
         allProjects.forEach(p => {
-            if (p.assigned_engineer?.color) {
-                css += `.eng-${p.assigned_engineer.id} .bar-progress, .eng-${p.assigned_engineer.id} .bar { fill: ${p.assigned_engineer.color}; }\n`;
-            }
+            (p.assigned_engineers || []).forEach(eng => {
+                if (eng.color) {
+                    css += `.eng-${eng.id} .bar-progress, .eng-${eng.id} .bar { fill: ${eng.color}; }\n`;
+                }
+            });
         });
         style.textContent = css;
         document.head.appendChild(style);
@@ -443,17 +477,21 @@
         }
         section.style.display = '';
 
-        tbody.innerHTML = unscheduled.map(p => `
+        tbody.innerHTML = unscheduled.map(p => {
+            const engNames = p.assigned_engineers?.length
+                ? p.assigned_engineers.map(e => e.username).join(', ')
+                : '<span style="color:var(--text-muted)">Unassigned</span>';
+            return `
             <tr>
                 <td style="font-weight:500;">${p.name}</td>
                 <td style="color:var(--text-muted);">${p.folder_name}</td>
                 <td><span class="badge badge-pts">${p.total_points} pts</span></td>
                 <td>${p.task_count}</td>
                 <td><span class="badge badge-${p.difficulty}">${p.difficulty.charAt(0).toUpperCase() + p.difficulty.slice(1)}</span></td>
-                <td>${p.assigned_engineer?.username || '<span style="color:var(--text-muted)">Unassigned</span>'}</td>
+                <td>${engNames}</td>
                 ${isAdmin ? `<td><button class="btn btn-primary btn-sm" onclick="openPanel(${p.id})">Edit</button></td>` : ''}
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
     }
 
     // ── Render Long-Term Projects ──
@@ -464,7 +502,7 @@
             const days = (new Date(p.end_date) - new Date(p.start_date)) / (1000 * 60 * 60 * 24);
             return days >= LONG_TERM_DAYS;
         });
-        if (filterEng) longTerm = longTerm.filter(p => p.assigned_engineer?.id === parseInt(filterEng));
+        if (filterEng) longTerm = longTerm.filter(p => (p.assigned_engineers || []).some(e => e.id === parseInt(filterEng)));
 
         const section = document.getElementById('longterm-section');
         const tbody = document.getElementById('longterm-body');
@@ -475,19 +513,23 @@
         }
         section.style.display = '';
 
-        tbody.innerHTML = longTerm.map(p => `
+        tbody.innerHTML = longTerm.map(p => {
+            const engNames = p.assigned_engineers?.length
+                ? p.assigned_engineers.map(e => e.username).join(', ')
+                : '<span style="color:var(--text-muted)">Unassigned</span>';
+            return `
             <tr>
                 <td style="font-weight:500;">${p.name}</td>
                 <td style="color:var(--text-muted);">${p.folder_name}</td>
                 <td><span class="badge badge-pts">${p.total_points} pts</span></td>
                 <td>${p.task_count}</td>
                 <td><span class="badge badge-${p.difficulty}">${p.difficulty.charAt(0).toUpperCase() + p.difficulty.slice(1)}</span></td>
-                <td>${p.assigned_engineer?.username || '<span style="color:var(--text-muted)">Unassigned</span>'}</td>
+                <td>${engNames}</td>
                 <td>${p.start_date}</td>
                 <td>${p.end_date}</td>
                 ${isAdmin ? `<td><button class="btn btn-primary btn-sm" onclick="openPanel(${p.id})">Edit</button></td>` : ''}
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
     }
 
     // ── Side Panel ──
@@ -498,7 +540,19 @@
         document.getElementById('panelTitle').textContent = proj.name;
         const body = document.getElementById('panelBody');
 
+        const assignedIds = new Set((proj.assigned_engineers || []).map(e => e.id));
+
         if (isAdmin) {
+            const engCheckboxes = allEngineers.map(e => {
+                const checked = assignedIds.has(e.id) ? 'checked' : '';
+                const swatch = e.color ? `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${e.color};margin-right:6px;"></span>` : '';
+                return `<label style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:pointer;border-radius:6px;transition:background 0.15s;"
+                    onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background='transparent'">
+                    <input type="checkbox" class="panel-eng-cb" value="${e.id}" ${checked} style="accent-color:var(--pulse-primary);">
+                    ${swatch}${e.username}
+                </label>`;
+            }).join('');
+
             body.innerHTML = `
                 <div class="form-group">
                     <label>Folder</label>
@@ -509,11 +563,10 @@
                     <div class="info-value">${proj.total_points} pts across ${proj.task_count} tasks</div>
                 </div>
                 <div class="form-group">
-                    <label>Assigned Engineer</label>
-                    <select id="panelEngineer">
-                        <option value="">Unassigned</option>
-                        ${allEngineers.map(e => `<option value="${e.id}" ${proj.assigned_engineer?.id === e.id ? 'selected' : ''}>${e.username}</option>`).join('')}
-                    </select>
+                    <label>Assigned Engineers</label>
+                    <div id="panelEngineers" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px;background:var(--bg-dark);">
+                        ${engCheckboxes}
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Start Date</label>
@@ -538,6 +591,9 @@
                 </div>
             `;
         } else {
+            const engNames = proj.assigned_engineers?.length
+                ? proj.assigned_engineers.map(e => e.username).join(', ')
+                : 'Unassigned';
             body.innerHTML = `
                 <div class="form-group">
                     <label>Folder</label>
@@ -548,8 +604,8 @@
                     <div class="info-value">${proj.total_points} pts across ${proj.task_count} tasks</div>
                 </div>
                 <div class="form-group">
-                    <label>Assigned Engineer</label>
-                    <div class="info-value">${proj.assigned_engineer?.username || 'Unassigned'}</div>
+                    <label>Assigned Engineers</label>
+                    <div class="info-value">${engNames}</div>
                 </div>
                 <div class="form-group">
                     <label>Timeline</label>
@@ -572,8 +628,9 @@
     }
 
     async function savePanel(projectId) {
+        const checkedIds = [...document.querySelectorAll('.panel-eng-cb:checked')].map(cb => parseInt(cb.value));
         const data = {
-            assigned_engineer_id: parseInt(document.getElementById('panelEngineer').value) || null,
+            assigned_engineer_ids: checkedIds,
             start_date: document.getElementById('panelStartDate').value || null,
             end_date: document.getElementById('panelEndDate').value || null,
             difficulty: document.getElementById('panelDifficulty').value,
@@ -615,10 +672,12 @@
     // ── Filters ──
     function applyDateFilter() {
         renderGantt();
+        loadBandwidth();
     }
     function applyEngineerFilter() {
         renderGantt();
         renderLongTerm();
+        loadBandwidth();
     }
 
     // ── Sync ──
@@ -640,6 +699,70 @@
         } finally {
             btn.disabled = false;
             btn.textContent = 'Sync ClickUp';
+        }
+    }
+
+    // ── Bandwidth ──
+    async function loadBandwidth() {
+        const start = document.getElementById('dateFrom').value;
+        const end = document.getElementById('dateTo').value;
+        if (!start || !end) return;
+
+        const section = document.getElementById('bandwidth-section');
+        const thead = document.getElementById('bandwidth-head');
+        const tbody = document.getElementById('bandwidth-body');
+
+        try {
+            const res = await fetch(`/api/capacity-planning/bandwidth?start=${start}&end=${end}`);
+            if (!res.ok) { section.style.display = 'none'; return; }
+            const data = await res.json();
+
+            if (!data.engineers || data.engineers.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = '';
+
+            // Format week labels (e.g., "Mar 9")
+            const weekLabels = data.weeks.map(w => {
+                const d = new Date(w + 'T00:00:00');
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+
+            // Header
+            thead.innerHTML = `<tr>
+                <th style="position:sticky;left:0;background:var(--bg-card);z-index:1;">Engineer</th>
+                ${weekLabels.map(w => `<th class="bw-cell">${w}</th>`).join('')}
+                <th class="bw-cell" style="border-left:2px solid var(--border);">Avg</th>
+            </tr>`;
+
+            // Body
+            const filterEng = document.getElementById('engineerFilter').value;
+            let engineers = data.engineers;
+            if (filterEng) engineers = engineers.filter(e => e.id === parseInt(filterEng));
+
+            tbody.innerHTML = engineers.map(eng => {
+                const swatch = eng.color ? `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${eng.color};margin-right:6px;"></span>` : '';
+                const nonZero = eng.weekly_load.filter(v => v > 0);
+                const avg = nonZero.length ? (nonZero.reduce((a, b) => a + b, 0) / nonZero.length).toFixed(1) : '0';
+
+                const cells = eng.weekly_load.map(v => {
+                    if (v === 0) return `<td class="bw-cell bw-none">-</td>`;
+                    let cls = 'bw-light';
+                    if (v >= 20) cls = 'bw-heavy';
+                    else if (v >= 10) cls = 'bw-moderate';
+                    return `<td class="bw-cell ${cls}">${v}</td>`;
+                }).join('');
+
+                return `<tr>
+                    <td class="bw-eng-cell" style="position:sticky;left:0;background:var(--bg-card);z-index:1;">${swatch}${eng.username}</td>
+                    ${cells}
+                    <td class="bw-cell" style="border-left:2px solid var(--border);font-weight:600;">${avg}</td>
+                </tr>`;
+            }).join('');
+        } catch (err) {
+            console.error('Failed to load bandwidth:', err);
+            section.style.display = 'none';
         }
     }
 
