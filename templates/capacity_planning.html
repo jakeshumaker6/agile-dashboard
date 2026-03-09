@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
     <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -129,13 +130,22 @@
         .form-group .info-value { font-size: 15px; font-weight: 500; }
         .panel-actions { margin-top: 24px; display: flex; gap: 8px; }
 
-        /* Bandwidth cells */
-        .bw-cell { text-align: center; font-size: 12px; font-weight: 500; min-width: 60px; }
-        .bw-light { background: rgba(74,222,128,0.1); color: var(--success); }
-        .bw-moderate { background: rgba(251,191,36,0.12); color: var(--warning); }
-        .bw-heavy { background: rgba(248,113,113,0.12); color: var(--danger); }
-        .bw-none { color: var(--text-muted); opacity: 0.4; }
-        .bw-eng-cell { white-space: nowrap; }
+        /* Custom Gantt tooltip */
+        .gantt-tooltip {
+            position: fixed; display: none; min-width: 350px; max-width: 420px;
+            padding: 16px 20px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            z-index: 1500; pointer-events: none; line-height: 1.6;
+        }
+        .gantt-tooltip.visible { display: block; }
+        .gantt-tooltip .tt-title { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+        .gantt-tooltip .tt-client { color: var(--text-muted); font-size: 13px; margin-bottom: 10px; }
+        .gantt-tooltip .tt-badges { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .gantt-tooltip .tt-engineers { font-size: 13px; }
+        .gantt-tooltip .tt-engineers span { color: var(--text-muted); }
+
+        /* Hide Frappe Gantt's built-in popup */
+        .gantt .popup-wrapper { display: none !important; }
 
         /* Toast */
         .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); font-size: 13px; z-index: 2000; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; }
@@ -210,34 +220,18 @@
 
         <!-- Engineer Bandwidth -->
         <div class="card" id="bandwidth-section" style="display:none;">
-            <h2>Engineer Bandwidth <span style="font-size:13px;font-weight:400;color:var(--text-muted);margin-left:8px;">Points per week by engineer</span></h2>
-            <div style="overflow-x:auto;">
-                <table id="bandwidth-table">
-                    <thead id="bandwidth-head"></thead>
-                    <tbody id="bandwidth-body"></tbody>
-                </table>
+            <h2>Engineer Bandwidth <span style="font-size:13px;font-weight:400;color:var(--text-muted);margin-left:8px;">Points per week vs 1X/10X targets</span></h2>
+            <div style="position:relative;height:400px;">
+                <canvas id="bandwidth-chart"></canvas>
             </div>
         </div>
 
-        <!-- Annual / Long-Term Projects -->
-        <div class="card" id="longterm-section" style="display:none;">
-            <h2>Annual / Long-Term Projects</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Project</th>
-                        <th>Folder</th>
-                        <th>Points</th>
-                        <th>Tasks</th>
-                        <th>Difficulty</th>
-                        <th>Engineer</th>
-                        <th>Start</th>
-                        <th>End</th>
-                        {% if session.role == 'admin' %}<th>Actions</th>{% endif %}
-                    </tr>
-                </thead>
-                <tbody id="longterm-body"></tbody>
-            </table>
+        <!-- Long-Term Engagements Gantt -->
+        <div class="card" id="longterm-gantt-section" style="display:none;">
+            <h2>Long-Term Engagements</h2>
+            <div class="gantt-wrapper">
+                <div id="longterm-gantt-target"></div>
+            </div>
         </div>
 
         <!-- Unscheduled Projects -->
@@ -270,11 +264,14 @@
         <div class="panel-body" id="panelBody"></div>
     </div>
 
+    <div id="gantt-tooltip" class="gantt-tooltip"></div>
     <div id="toast" class="toast"></div>
 
 <script>
     const isAdmin = {{ 'true' if session.role == 'admin' else 'false' }};
     let ganttInstance = null;
+    let longTermGanttInstance = null;
+    let bandwidthChart = null;
     let allProjects = [];
     let allEngineers = [];
     let currentViewMode = 'Week';
@@ -327,8 +324,8 @@
             populateEngineerFilter();
             renderLegend();
             renderGantt();
+            renderLongTermGantt();
             loadBandwidth();
-            renderLongTerm();
             renderUnscheduled();
         } catch (err) {
             console.error('Failed to load data:', err);
@@ -368,12 +365,8 @@
         const target = document.getElementById('gantt-target');
         const filterEng = document.getElementById('engineerFilter').value;
 
-        // Filter to scheduled projects, separating long-term (365+ days)
-        const LONG_TERM_DAYS = 365;
-        let scheduled = allProjects.filter(p => p.start_date && p.end_date).filter(p => {
-            const days = (new Date(p.end_date) - new Date(p.start_date)) / (1000 * 60 * 60 * 24);
-            return days < LONG_TERM_DAYS;
-        });
+        // Filter to scheduled standard projects (not long-term)
+        let scheduled = allProjects.filter(p => p.start_date && p.end_date && (p.project_type || 'standard') === 'standard');
         if (filterEng) scheduled = scheduled.filter(p => (p.assigned_engineers || []).some(e => e.id === parseInt(filterEng)));
 
         if (scheduled.length === 0) {
@@ -435,6 +428,7 @@
             if (isAdmin) {
                 target.querySelector('.gantt')?.classList.add('admin-mode');
             }
+            attachGanttTooltips(target);
         } catch (err) {
             console.error('Gantt render error:', err);
             target.innerHTML = '<div class="empty-state">Error rendering Gantt chart. Check console for details.</div>';
@@ -494,42 +488,98 @@
         }).join('');
     }
 
-    // ── Render Long-Term Projects ──
-    function renderLongTerm() {
-        const LONG_TERM_DAYS = 365;
+    // ── Render Long-Term Gantt ──
+    function renderLongTermGantt() {
         const filterEng = document.getElementById('engineerFilter').value;
-        let longTerm = allProjects.filter(p => p.start_date && p.end_date).filter(p => {
-            const days = (new Date(p.end_date) - new Date(p.start_date)) / (1000 * 60 * 60 * 24);
-            return days >= LONG_TERM_DAYS;
-        });
+        let longTerm = allProjects.filter(p => p.start_date && p.end_date && (p.project_type || 'standard') === 'long_term');
         if (filterEng) longTerm = longTerm.filter(p => (p.assigned_engineers || []).some(e => e.id === parseInt(filterEng)));
 
-        const section = document.getElementById('longterm-section');
-        const tbody = document.getElementById('longterm-body');
+        const section = document.getElementById('longterm-gantt-section');
+        const target = document.getElementById('longterm-gantt-target');
 
         if (longTerm.length === 0) {
             section.style.display = 'none';
+            longTermGanttInstance = null;
             return;
         }
         section.style.display = '';
 
-        tbody.innerHTML = longTerm.map(p => {
-            const engNames = p.assigned_engineers?.length
-                ? p.assigned_engineers.map(e => e.username).join(', ')
-                : '<span style="color:var(--text-muted)">Unassigned</span>';
-            return `
-            <tr>
-                <td style="font-weight:500;">${p.name}</td>
-                <td style="color:var(--text-muted);">${p.folder_name}</td>
-                <td><span class="badge badge-pts">${p.total_points} pts</span></td>
-                <td>${p.task_count}</td>
-                <td><span class="badge badge-${p.difficulty}">${p.difficulty.charAt(0).toUpperCase() + p.difficulty.slice(1)}</span></td>
-                <td>${engNames}</td>
-                <td>${p.start_date}</td>
-                <td>${p.end_date}</td>
-                ${isAdmin ? `<td><button class="btn btn-primary btn-sm" onclick="openPanel(${p.id})">Edit</button></td>` : ''}
-            </tr>`;
-        }).join('');
+        const tasks = longTerm.map(p => ({
+            id: String(p.id),
+            name: `${p.name} (${p.complexity_label})`,
+            start: p.start_date,
+            end: p.end_date,
+            progress: 0,
+            custom_class: p.assigned_engineers?.length ? `eng-${p.assigned_engineers[0].id}` : 'eng-unassigned',
+        }));
+
+        injectEngineerStyles();
+        target.innerHTML = '';
+        try {
+            longTermGanttInstance = new Gantt(target, tasks, {
+                view_mode: 'Month',
+                date_format: 'YYYY-MM-DD',
+                on_click: task => openPanel(parseInt(task.id)),
+                on_date_change: isAdmin ? (task, start, end) => {
+                    updateProject(parseInt(task.id), { start_date: formatDate(start), end_date: formatDate(end) });
+                } : undefined,
+                custom_popup_html: () => '',
+            });
+            if (isAdmin) {
+                target.querySelector('.gantt')?.classList.add('admin-mode');
+            }
+            attachGanttTooltips(target);
+        } catch (err) {
+            console.error('Long-term Gantt error:', err);
+            target.innerHTML = '<div class="empty-state">Error rendering long-term Gantt.</div>';
+            longTermGanttInstance = null;
+        }
+    }
+
+    // ── Gantt Tooltip ──
+    function attachGanttTooltips(container) {
+        const tooltip = document.getElementById('gantt-tooltip');
+        const bars = container.querySelectorAll('.bar-wrapper');
+        bars.forEach(bar => {
+            bar.addEventListener('mouseenter', e => {
+                const taskId = bar.getAttribute('data-id');
+                const proj = allProjects.find(p => String(p.id) === taskId);
+                if (!proj) return;
+
+                const engNames = proj.assigned_engineers?.length
+                    ? proj.assigned_engineers.map(e => e.username).join(', ')
+                    : 'Unassigned';
+                const diffClass = `badge-${proj.difficulty}`;
+                const avgPts = proj.avg_points_per_week != null ? `~${proj.avg_points_per_week} pts/week` : '';
+
+                tooltip.innerHTML = `
+                    <div class="tt-title">${proj.name}</div>
+                    <div class="tt-client">${proj.folder_name}</div>
+                    <div class="tt-badges">
+                        <span class="badge badge-pts">${proj.total_points} pts</span>
+                        <span class="badge ${diffClass}">${proj.difficulty.charAt(0).toUpperCase() + proj.difficulty.slice(1)}</span>
+                        ${avgPts ? `<span style="font-size:12px;color:var(--text-muted);">${avgPts}</span>` : ''}
+                    </div>
+                    <div class="tt-engineers"><span>Engineers:</span> ${engNames}</div>
+                `;
+
+                // Position near cursor
+                const x = Math.min(e.clientX + 16, window.innerWidth - 440);
+                const y = Math.min(e.clientY + 16, window.innerHeight - 200);
+                tooltip.style.left = x + 'px';
+                tooltip.style.top = y + 'px';
+                tooltip.classList.add('visible');
+            });
+            bar.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('visible');
+            });
+            bar.addEventListener('mousemove', e => {
+                const x = Math.min(e.clientX + 16, window.innerWidth - 440);
+                const y = Math.min(e.clientY + 16, window.innerHeight - 200);
+                tooltip.style.left = x + 'px';
+                tooltip.style.top = y + 'px';
+            });
+        });
     }
 
     // ── Side Panel ──
@@ -553,6 +603,7 @@
                 </label>`;
             }).join('');
 
+            const projType = proj.project_type || 'standard';
             body.innerHTML = `
                 <div class="form-group">
                     <label>Folder</label>
@@ -561,6 +612,13 @@
                 <div class="form-group">
                     <label>Points / Tasks</label>
                     <div class="info-value">${proj.total_points} pts across ${proj.task_count} tasks</div>
+                </div>
+                <div class="form-group">
+                    <label>Project Type</label>
+                    <select id="panelProjectType">
+                        <option value="standard" ${projType === 'standard' ? 'selected' : ''}>Standard</option>
+                        <option value="long_term" ${projType === 'long_term' ? 'selected' : ''}>Long-Term Engagement</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Assigned Engineers</label>
@@ -631,6 +689,7 @@
         const checkedIds = [...document.querySelectorAll('.panel-eng-cb:checked')].map(cb => parseInt(cb.value));
         const data = {
             assigned_engineer_ids: checkedIds,
+            project_type: document.getElementById('panelProjectType').value,
             start_date: document.getElementById('panelStartDate').value || null,
             end_date: document.getElementById('panelEndDate').value || null,
             difficulty: document.getElementById('panelDifficulty').value,
@@ -676,7 +735,7 @@
     }
     function applyEngineerFilter() {
         renderGantt();
-        renderLongTerm();
+        renderLongTermGantt();
         loadBandwidth();
     }
 
@@ -704,16 +763,24 @@
 
     // ── Bandwidth ──
     async function loadBandwidth() {
-        const start = document.getElementById('dateFrom').value;
-        const end = document.getElementById('dateTo').value;
-        if (!start || !end) return;
+        // Start 2 weeks ago, end at furthest project end or +3 months
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(start.getDate() - 14);
+        const startStr = formatDate(start);
+
+        // Use date filter end or compute from projects
+        let endStr = document.getElementById('dateTo').value;
+        if (!endStr) {
+            const fallback = new Date(now);
+            fallback.setMonth(fallback.getMonth() + 3);
+            endStr = formatDate(fallback);
+        }
 
         const section = document.getElementById('bandwidth-section');
-        const thead = document.getElementById('bandwidth-head');
-        const tbody = document.getElementById('bandwidth-body');
 
         try {
-            const res = await fetch(`/api/capacity-planning/bandwidth?start=${start}&end=${end}`);
+            const res = await fetch(`/api/capacity-planning/bandwidth?start=${startStr}&end=${endStr}`);
             if (!res.ok) { section.style.display = 'none'; return; }
             const data = await res.json();
 
@@ -722,48 +789,118 @@
                 return;
             }
             section.style.display = '';
-
-            // Format week labels (e.g., "Mar 9")
-            const weekLabels = data.weeks.map(w => {
-                const d = new Date(w + 'T00:00:00');
-                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            });
-
-            // Header
-            thead.innerHTML = `<tr>
-                <th style="position:sticky;left:0;background:var(--bg-card);z-index:1;">Engineer</th>
-                ${weekLabels.map(w => `<th class="bw-cell">${w}</th>`).join('')}
-                <th class="bw-cell" style="border-left:2px solid var(--border);">Avg</th>
-            </tr>`;
-
-            // Body
-            const filterEng = document.getElementById('engineerFilter').value;
-            let engineers = data.engineers;
-            if (filterEng) engineers = engineers.filter(e => e.id === parseInt(filterEng));
-
-            tbody.innerHTML = engineers.map(eng => {
-                const swatch = eng.color ? `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${eng.color};margin-right:6px;"></span>` : '';
-                const nonZero = eng.weekly_load.filter(v => v > 0);
-                const avg = nonZero.length ? (nonZero.reduce((a, b) => a + b, 0) / nonZero.length).toFixed(1) : '0';
-
-                const cells = eng.weekly_load.map(v => {
-                    if (v === 0) return `<td class="bw-cell bw-none">-</td>`;
-                    let cls = 'bw-light';
-                    if (v >= 20) cls = 'bw-heavy';
-                    else if (v >= 10) cls = 'bw-moderate';
-                    return `<td class="bw-cell ${cls}">${v}</td>`;
-                }).join('');
-
-                return `<tr>
-                    <td class="bw-eng-cell" style="position:sticky;left:0;background:var(--bg-card);z-index:1;">${swatch}${eng.username}</td>
-                    ${cells}
-                    <td class="bw-cell" style="border-left:2px solid var(--border);font-weight:600;">${avg}</td>
-                </tr>`;
-            }).join('');
+            renderBandwidthChart(data);
         } catch (err) {
             console.error('Failed to load bandwidth:', err);
             section.style.display = 'none';
         }
+    }
+
+    function renderBandwidthChart(data) {
+        if (bandwidthChart) { bandwidthChart.destroy(); bandwidthChart = null; }
+
+        const ctx = document.getElementById('bandwidth-chart').getContext('2d');
+        const weekLabels = data.weeks.map(w => {
+            const d = new Date(w + 'T00:00:00');
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        });
+
+        const filterEng = document.getElementById('engineerFilter').value;
+        let engineers = data.engineers;
+        if (filterEng) engineers = engineers.filter(e => e.id === parseInt(filterEng));
+
+        const datasets = [];
+
+        // 1X baseline
+        datasets.push({
+            label: '1X Baseline (' + data.oneX + ' pts)',
+            data: new Array(weekLabels.length).fill(data.oneX),
+            borderColor: '#6B7280',
+            borderDash: [8, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+        });
+
+        // 10X target
+        datasets.push({
+            label: '10X Target (' + data.tenX + ' pts)',
+            data: new Array(weekLabels.length).fill(data.tenX),
+            borderColor: '#FBBF24',
+            borderDash: [8, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+        });
+
+        // Per-engineer lines
+        engineers.forEach(eng => {
+            datasets.push({
+                label: eng.username,
+                data: eng.weekly_load,
+                borderColor: eng.color || '#888',
+                backgroundColor: (eng.color || '#888') + '33',
+                borderWidth: 2.5,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                tension: 0.3,
+                fill: false,
+            });
+        });
+
+        // Unassigned line
+        if (data.unassigned && data.unassigned.some(v => v > 0)) {
+            datasets.push({
+                label: 'Unassigned',
+                data: data.unassigned,
+                borderColor: '#6B7280',
+                borderDash: [4, 4],
+                borderWidth: 2,
+                pointRadius: 2,
+                pointStyle: 'triangle',
+                tension: 0.3,
+                fill: false,
+            });
+        }
+
+        bandwidthChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: weekLabels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: '#E8EAED', usePointStyle: true, padding: 16, font: { size: 12 } },
+                    },
+                    tooltip: {
+                        backgroundColor: '#161B24',
+                        borderColor: '#2A3344',
+                        borderWidth: 1,
+                        titleColor: '#E8EAED',
+                        bodyColor: '#E8EAED',
+                        padding: 12,
+                        callbacks: {
+                            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} pts`,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#8B95A5', font: { size: 11 } },
+                        grid: { color: 'rgba(42,51,68,0.4)' },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#8B95A5', font: { size: 11 } },
+                        grid: { color: 'rgba(42,51,68,0.4)' },
+                        title: { display: true, text: 'Points per Week', color: '#8B95A5' },
+                    },
+                },
+            },
+        });
     }
 
     // ── Helpers ──

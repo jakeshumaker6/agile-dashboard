@@ -141,6 +141,19 @@ def init_cp_db():
             (row["id"], row["assigned_engineer_id"], now)
         )
 
+    # Add project_type column if missing
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(cp_projects)").fetchall()]
+    if "project_type" not in cols:
+        conn.execute("ALTER TABLE cp_projects ADD COLUMN project_type TEXT DEFAULT 'standard'")
+        # Auto-migrate: projects >= 365 days → long_term
+        conn.execute("""
+            UPDATE cp_projects
+            SET project_type = 'long_term'
+            WHERE start_date IS NOT NULL AND end_date IS NOT NULL
+              AND (julianday(end_date) - julianday(start_date)) >= 365
+        """)
+        logger.info("Added project_type column and migrated long-term projects")
+
     conn.close()
     logger.info("Capacity planning database initialized")
 
@@ -422,6 +435,7 @@ def api_cp_projects():
                 "task_count": row.get("task_count", 0) or 0,
                 "complexity_label": complexity_label,
                 "avg_points_per_week": avg_pts_week,
+                "project_type": row.get("project_type", "standard") or "standard",
             })
         except Exception as e:
             logger.warning(f"Failed to process project row {row.get('id', '?')}: {e}")
@@ -460,12 +474,16 @@ def api_cp_update_project(project_id):
         else:
             engineer_ids = []
 
-    allowed = {"start_date", "end_date", "difficulty"}
+    allowed = {"start_date", "end_date", "difficulty", "project_type"}
     updates = {k: v for k, v in data.items() if k in allowed}
 
     # Validate difficulty
     if "difficulty" in updates and updates["difficulty"] not in ("easy", "medium", "hard", "complex"):
         return jsonify({"error": "Invalid difficulty. Use: easy, medium, hard, complex"}), 400
+
+    # Validate project_type
+    if "project_type" in updates and updates["project_type"] not in ("standard", "long_term"):
+        return jsonify({"error": "Invalid project_type. Use: standard, long_term"}), 400
 
     if not updates and engineer_ids is None:
         return jsonify({"error": "No valid fields to update"}), 400
@@ -589,10 +607,15 @@ def api_cp_bandwidth():
     users = get_all_users()
     user_hours = {u["id"]: u.get("weekly_hours") or 40 for u in users}
 
-    # Build per-engineer weekly load
-    # engineer_load[user_id][week_index] = points
+    # 1X/10X based on standard 40hr/week, 1.5 hrs/point
+    HOURS_PER_POINT = 1.5
+    one_x = round(40 / HOURS_PER_POINT)
+    ten_x = one_x * 10
+
+    # Build per-engineer weekly load + unassigned
     engineer_load = {}
     engineer_info = {}
+    unassigned_load = [0.0] * len(weeks)
 
     for row in _rows_to_list(rows):
         try:
@@ -606,11 +629,18 @@ def api_cp_bandwidth():
             continue
 
         duration_weeks = max(1, math.ceil((p_end - p_start).days / 7))
+        weekly_pts = total_pts / duration_weeks
         engineers = proj_engineers.get(row["id"], [])
+
         if not engineers:
+            # Track unassigned work
+            for i, wk in enumerate(weeks):
+                wk_end = wk + timedelta(days=6)
+                if p_start <= wk_end and p_end >= wk:
+                    unassigned_load[i] += weekly_pts
             continue
 
-        pts_per_engineer_per_week = total_pts / duration_weeks / len(engineers)
+        pts_per_engineer_per_week = weekly_pts / len(engineers)
 
         for eng in engineers:
             uid = eng["id"]
@@ -620,7 +650,6 @@ def api_cp_bandwidth():
 
             for i, wk in enumerate(weeks):
                 wk_end = wk + timedelta(days=6)
-                # Check if this project overlaps this week
                 if p_start <= wk_end and p_end >= wk:
                     engineer_load[uid][i] += pts_per_engineer_per_week
 
@@ -637,7 +666,13 @@ def api_cp_bandwidth():
             "weekly_load": [round(v, 1) for v in load],
         })
 
-    return jsonify({"weeks": week_labels, "engineers": engineers_out})
+    return jsonify({
+        "weeks": week_labels,
+        "engineers": engineers_out,
+        "unassigned": [round(v, 1) for v in unassigned_load],
+        "oneX": one_x,
+        "tenX": ten_x,
+    })
 
 
 # ---------------------------------------------------------------------------
