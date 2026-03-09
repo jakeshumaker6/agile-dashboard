@@ -180,6 +180,26 @@ KNOWN_HOUR_OVERRIDES = {
     "Adri Andika": 30,
 }
 
+# Members whose capacity hours are volatile (based on actual ClickUp hours logged)
+# instead of a static weekly setting
+VOLATILE_CAPACITY_MEMBERS = {"Jake Shumaker", "Sean Miller"}
+
+
+def get_volatile_member_hours(member_name, member_tasks, monday, sunday):
+    """For volatile members, sum actual hours logged on tasks completed in the given week."""
+    if member_name not in VOLATILE_CAPACITY_MEMBERS:
+        return None  # Not volatile — use static capacity
+
+    # Sum time_spent_ms from tasks completed (or effectively completed) in this week
+    completed = [
+        t for t in member_tasks
+        if (t["is_complete"] and t["date_closed"] and monday <= t["date_closed"] <= sunday)
+    ]
+    completed += _effectively_completed_in_range(member_tasks, monday, sunday)
+
+    total_ms = sum(t.get("time_spent_ms", 0) for t in completed)
+    return round(total_ms / 3600000, 1)  # Convert ms to hours
+
 
 def load_capacity_config():
     """Load saved team capacity configuration from file."""
@@ -1477,8 +1497,26 @@ def api_insights():
 @app.route("/api/team-capacity")
 @login_required
 def api_team_capacity():
-    """Get team capacity (merged from ClickUp + saved config)."""
+    """Get team capacity (merged from ClickUp + saved config).
+
+    For volatile members (Jake Shumaker, Sean Miller), hours are replaced
+    with actual ClickUp hours logged for the current week.
+    """
     capacity = build_team_capacity()
+
+    # Override volatile members with actual ClickUp hours
+    cur_mon, cur_sun = get_week_bounds(week_offset=0)
+    all_tasks = get_all_tasks()
+    pulse_members = get_pulse_team_members()
+    for member in pulse_members:
+        name = member["username"]
+        if name in VOLATILE_CAPACITY_MEMBERS and name in capacity:
+            mid = member["id"]
+            member_tasks = [t for t in all_tasks if any(a["id"] == mid for a in t["assignees"])]
+            vol_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun)
+            if vol_hours is not None:
+                capacity[name] = vol_hours
+
     return jsonify(capacity)
 
 
@@ -1976,7 +2014,9 @@ def api_team_performance():
             current_week_points = sum(t["score"] or 0 for t in cur_completed)
 
             # --- Utilization rate ---
-            member_hours = capacity.get(name, DEFAULT_MEMBER_HOURS)
+            # For volatile members, use actual ClickUp hours for current week
+            volatile_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun)
+            member_hours = volatile_hours if volatile_hours is not None else capacity.get(name, DEFAULT_MEMBER_HOURS)
             expected_pts = calculate_expected_points_from_hours(member_hours)
             # Average points over last 4 weeks for utilization
             last4_pts = [w["points"] for w in weekly_points[-4:]]
@@ -1990,6 +2030,7 @@ def api_team_performance():
                 "initials": member.get("initials", ""),
                 "current_week_points": current_week_points,
                 "current_week_tasks": len(cur_completed),
+                "is_volatile": name in VOLATILE_CAPACITY_MEMBERS,
                 "weekly_points": weekly_points,
                 "weekly_tasks": weekly_tasks,
                 "on_time": on_time,
@@ -2101,7 +2142,10 @@ def api_team_performance_member(member_id):
                 delta = (t["date_closed"] - t["date_created"]).total_seconds() / 86400
                 close_times.append(delta)
 
-        member_hours = capacity.get(member_name, DEFAULT_MEMBER_HOURS)
+        # Volatile members use actual ClickUp hours for current week
+        cur_mon, cur_sun = get_week_bounds(week_offset=0)
+        volatile_hours = get_volatile_member_hours(member_name, member_tasks, cur_mon, cur_sun)
+        member_hours = volatile_hours if volatile_hours is not None else capacity.get(member_name, DEFAULT_MEMBER_HOURS)
         expected_pts = calculate_expected_points_from_hours(member_hours)
 
         return jsonify({
@@ -2115,6 +2159,7 @@ def api_team_performance_member(member_id):
             "total_completed": len(completed_all),
             "capacity_hours": member_hours,
             "expected_points": expected_pts,
+            "is_volatile": member_name in VOLATILE_CAPACITY_MEMBERS,
         })
     except Exception as e:
         logger.error(f"Error in api_team_performance_member: {e}", exc_info=True)
@@ -2197,8 +2242,9 @@ def api_sprint_planning():
             completed_this_week = completed_this_week + _effectively_completed_in_range(member_tasks, cur_mon, cur_sun)
             completed_points = sum(t["score"] or 0 for t in completed_this_week)
 
-            # Capacity
-            member_hours = capacity.get(name, DEFAULT_MEMBER_HOURS)
+            # Capacity — volatile members use actual ClickUp hours for current week
+            volatile_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun)
+            member_hours = volatile_hours if volatile_hours is not None else capacity.get(name, DEFAULT_MEMBER_HOURS)
             expected_pts = calculate_expected_points_from_hours(member_hours)
 
             # Historical velocity (last 4 weeks)
@@ -2260,7 +2306,14 @@ def api_sprint_planning():
             actual_pts = sum(t["score"] or 0 for t in completed)
             task_count = len(completed)
             # Estimate planned = sum of expected points across team
-            planned_pts = sum(calculate_expected_points_from_hours(capacity.get(m["username"], DEFAULT_MEMBER_HOURS)) for m in pulse_members)
+            # For volatile members, use actual hours logged that week
+            planned_pts = 0
+            for m in pulse_members:
+                mname = m["username"]
+                m_tasks = [t for t in all_tasks if any(a["id"] == m["id"] for a in t["assignees"])]
+                vol_hrs = get_volatile_member_hours(mname, m_tasks, mon, sun)
+                hrs = vol_hrs if vol_hrs is not None else capacity.get(mname, DEFAULT_MEMBER_HOURS)
+                planned_pts += calculate_expected_points_from_hours(hrs)
             completion_rate = round((actual_pts / planned_pts) * 100) if planned_pts else 0
             history.append({
                 "week": week_label,
