@@ -539,6 +539,9 @@ def refresh_daily_cache():
     """
     Refresh the daily cache with fresh data from ClickUp.
     This is called by the scheduler at 2pm ET daily.
+
+    Only pre-computes "all team" data (the default dashboard view).
+    Per-member data is computed on-demand since it's fast once tasks are cached.
     """
     logger.info("Starting daily cache refresh...")
 
@@ -560,53 +563,34 @@ def refresh_daily_cache():
             'team_members': None,
         }
 
-        # Pre-compute metrics for current week and several weeks back
-        # (for velocity history chart)
-        for week_offset in range(0, -9, -1):  # Current week + 8 weeks history
+        # Pre-compute all-team metrics for current week + 8 weeks history
+        for week_offset in range(0, -9, -1):
             try:
                 metrics = calculate_metrics(week_offset=week_offset, assignee_id=None)
                 cache_data['metrics'][f'all_{week_offset}'] = metrics
             except Exception as e:
                 logger.error(f"Error caching metrics for week {week_offset}: {e}")
 
-        # Pre-compute velocity history
+        # Pre-compute all-team velocity and daily averages
         try:
-            velocity = get_velocity_history(weeks=8, assignee_id=None)
-            cache_data['velocity']['all'] = velocity
+            cache_data['velocity']['all'] = get_velocity_history(weeks=8, assignee_id=None)
         except Exception as e:
             logger.error(f"Error caching velocity: {e}")
 
-        # Pre-compute daily averages
         try:
-            daily_avg = get_daily_averages(weeks=8, assignee_id=None)
-            cache_data['daily_averages']['all'] = daily_avg
+            cache_data['daily_averages']['all'] = get_daily_averages(weeks=8, assignee_id=None)
         except Exception as e:
             logger.error(f"Error caching daily averages: {e}")
 
-        # Cache team members
+        # Cache team members list (lightweight)
         try:
             cache_data['team_members'] = get_team_members()
         except Exception as e:
             logger.error(f"Error caching team members: {e}")
 
-        # Pre-compute per-assignee data for each team member
-        if cache_data['team_members']:
-            for member in cache_data['team_members']:
-                member_id = member['id']
-                try:
-                    # Current week metrics for each member
-                    metrics = calculate_metrics(week_offset=0, assignee_id=member_id)
-                    cache_data['metrics'][f'{member_id}_0'] = metrics
-
-                    # Velocity for each member
-                    velocity = get_velocity_history(weeks=8, assignee_id=member_id)
-                    cache_data['velocity'][str(member_id)] = velocity
-
-                    # Daily averages for each member
-                    daily_avg = get_daily_averages(weeks=8, assignee_id=member_id)
-                    cache_data['daily_averages'][str(member_id)] = daily_avg
-                except Exception as e:
-                    logger.error(f"Error caching data for member {member_id}: {e}")
+        # Skip per-member pre-computation — computed on-demand when a specific
+        # member is selected from the dropdown. Tasks are already in memory/SQLite
+        # so per-member metrics are fast to compute without pre-caching.
 
         save_daily_cache(cache_data)
         logger.info("Daily cache refresh completed successfully")
@@ -1647,13 +1631,12 @@ def api_cache_status():
 @app.route("/api/refresh-cache", methods=["POST"])
 @admin_required
 def api_refresh_cache():
-    """Manually trigger a cache refresh (admin only).
-
-    Runs in a background thread to avoid Gunicorn timeout (120s).
-    """
+    """Manually trigger a cache refresh (admin only)."""
     logger.info("Manual cache refresh triggered")
-    threading.Thread(target=refresh_daily_cache, daemon=True).start()
-    return jsonify({"status": "success", "message": "Cache refresh started in background"})
+    success = refresh_daily_cache()
+    if success:
+        return jsonify({"status": "success", "message": "Cache refreshed successfully"})
+    return jsonify({"status": "error", "message": "Cache refresh failed"}), 500
 
 
 # ============================================================================
