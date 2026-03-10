@@ -425,8 +425,9 @@ def change_name():
 @admin_required
 def admin_users():
     """Admin page for user management."""
+    from app import VOLATILE_CAPACITY_MEMBERS
     users = get_all_users()
-    return render_template('admin/users.html', users=users)
+    return render_template('admin/users.html', users=users, volatile_members=VOLATILE_CAPACITY_MEMBERS)
 
 
 @auth_bp.route('/api/admin/users')

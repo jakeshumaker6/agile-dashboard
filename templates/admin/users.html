@@ -323,9 +323,13 @@
                             </span>
                         </td>
                         <td>
+                            {% if user.username in volatile_members %}
+                            <span style="font-size: 13px; color: var(--text-muted);" title="Hours pulled from ClickUp time tracking">ClickUp</span>
+                            {% else %}
                             <input type="number" class="hours-input" value="{{ user.weekly_hours if user.weekly_hours is not none else 40 }}" min="0" max="80"
                                 onchange="updateHours({{ user.id }}, this.value)"
                                 style="width: 60px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text); font-size: 14px; text-align: center;">
+                            {% endif %}
                         </td>
                         <td>
                             <input type="date" class="date-input" value="{{ user.start_date or '' }}"
