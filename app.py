@@ -1161,8 +1161,9 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
 def get_velocity_history(weeks: int = 8, assignee_id: int = None):
     """Get velocity data for the last N weeks.
 
-    Note: Team Capacity and 10x Goal lines are now calculated on the frontend
-    based on the configurable team hours, not historical averages.
+    Includes per-week capacity data so the velocity chart can draw
+    stepped capacity and 10x goal lines that reflect volatile members'
+    actual hours per week.
     """
     history = []
 
@@ -1178,8 +1179,42 @@ def get_velocity_history(weeks: int = 8, assignee_id: int = None):
 
     history = list(reversed(history))
 
+    # Compute per-week capacity (volatile members' hours vary by week)
+    capacity_per_week = []
+    try:
+        static_capacity = build_team_capacity()
+        pulse_members = get_pulse_team_members()
+        vol_cache = prefetch_volatile_time_entries(pulse_members, weeks=weeks)
+        all_tasks = get_all_tasks()
+
+        for offset in range(-(weeks - 1), 1):
+            mon, sun = get_week_bounds(week_offset=offset)
+            week_capacity = dict(static_capacity)  # copy static hours
+
+            # Override volatile members with actual ClickUp hours for this week
+            for member in pulse_members:
+                name = member["username"]
+                if name in VOLATILE_CAPACITY_MEMBERS and name in week_capacity:
+                    mid = member["id"]
+                    member_tasks = [t for t in all_tasks if any(a["id"] == mid for a in t["assignees"])]
+                    vol_hours = get_volatile_member_hours(
+                        name, member_tasks, mon, sun, member_id=mid, _hours_cache=vol_cache
+                    )
+                    if vol_hours is not None:
+                        week_capacity[name] = vol_hours
+
+            total_hours = sum(week_capacity.values())
+            capacity_per_week.append({
+                "total_hours": round(total_hours, 1),
+                "total_points": int(calculate_expected_points_from_hours(total_hours)),
+                "members": week_capacity,
+            })
+    except Exception as e:
+        logger.warning(f"Failed to compute per-week capacity for velocity: {e}")
+
     return {
         "history": history,
+        "capacity_per_week": capacity_per_week,
     }
 
 

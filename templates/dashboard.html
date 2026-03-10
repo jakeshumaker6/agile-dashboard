@@ -1896,31 +1896,57 @@
                 order: 1,
             }];
 
-            // Add Capacity line - dynamic based on team or individual filter
-            const capacity = getActiveCapacity();
-            if (capacity.points > 0) {
+            // Add Capacity and 10x Goal lines — per-week if volatile data available
+            const capacityPerWeek = velocityData.capacity_per_week;
+            const memberName = getSelectedMemberName();
+            let capacityPoints, showCapacity;
+
+            if (capacityPerWeek && capacityPerWeek.length === labels.length) {
+                // Per-week capacity from backend (accounts for volatile hours)
+                if (!memberName) {
+                    capacityPoints = capacityPerWeek.map(w => w.total_points);
+                } else {
+                    capacityPoints = capacityPerWeek.map(w => {
+                        const hrs = (w.members && w.members[memberName]) || 0;
+                        return Math.round(hrs / 1.5);
+                    });
+                }
+                showCapacity = capacityPoints.some(p => p > 0);
+            } else {
+                // Fallback: flat line from current week's capacity (stale cache)
+                const capacity = getActiveCapacity();
+                capacityPoints = Array(labels.length).fill(capacity.points);
+                showCapacity = capacity.points > 0;
+            }
+
+            if (showCapacity) {
+                const capacityLabel = memberName ? `${memberName.split(' ')[0]}'s Capacity` : 'Team Capacity';
+                const currentCap = capacityPoints[capacityPoints.length - 1];
+                const tenXPoints = capacityPoints.map(p => p * 10);
+                const currentTenX = tenXPoints[tenXPoints.length - 1];
+
                 datasets.push({
-                    label: `${capacity.label} (${capacity.points} pts)`,
-                    data: Array(labels.length).fill(capacity.points),
+                    label: `${capacityLabel} (${currentCap} pts)`,
+                    data: capacityPoints,
                     borderColor: '#8B95A5',
                     borderDash: [5, 5],
                     borderWidth: 2,
                     pointRadius: 0,
                     fill: false,
                     order: 3,
+                    stepped: true,
                 });
 
-                // Add 10x Goal - aspirational engineering target
-                const tenXGoal = capacity.points * 10;
                 datasets.push({
-                    label: `${capacity.goalLabel} (${tenXGoal} pts)`,
-                    data: Array(labels.length).fill(tenXGoal),
+                    label: `10x Goal (${currentTenX} pts)`,
+                    data: tenXPoints,
                     borderColor: '#4ADE80',
                     borderDash: [8, 4],
                     borderWidth: 2,
                     pointRadius: 0,
                     fill: false,
                     order: 2,
+                    stepped: true,
                 });
             }
 
@@ -1932,7 +1958,7 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: capacity.points > 0,
+                            display: showCapacity,
                             position: 'bottom',
                             labels: { color: '#8B95A5', font: { size: 11 }, usePointStyle: true }
                         }
