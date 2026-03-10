@@ -1505,10 +1505,10 @@
             }
         }
 
-        async function loadTeamCapacity() {
-            // Fetch capacity from server (managed in User Management)
+        async function loadTeamCapacity(weekOffset = 0) {
+            // Fetch capacity from server — volatile members' hours change per week
             try {
-                const response = await fetch('/api/team-capacity');
+                const response = await fetch(`/api/team-capacity?week_offset=${weekOffset}`);
                 teamCapacity = await response.json();
                 updateCapacitySummary();
                 populateCapacityGrid();
@@ -1754,6 +1754,9 @@
 
                 // If a newer request was made while this one was in flight, discard this result
                 if (thisRequestId !== refreshRequestId) return;
+
+                // Reload team capacity for this week (volatile members' hours change per week)
+                await loadTeamCapacity(currentWeekOffset);
 
                 // Update week label
                 document.getElementById('weekLabel').textContent = metrics.week.label;
