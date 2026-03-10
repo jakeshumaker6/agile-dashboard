@@ -1999,11 +1999,8 @@ def team_performance():
 def api_team_performance():
     """Get performance data for all Pulse team members."""
     try:
-        # Try daily cache first
-        cached = get_from_daily_cache('team_performance', 'all')
-        if cached:
-            logger.info("Returning cached team performance data")
-            return jsonify(cached)
+        # Skip daily cache — volatile members' hours change per week/sync
+        # and can't be reliably cached
 
         pulse_members = get_pulse_team_members()
         excluded = load_excluded_assignees()
@@ -2146,8 +2143,6 @@ def api_team_performance():
             }
         }
 
-        # Cache the result
-        set_daily_cache('team_performance', 'all', response_data)
         return jsonify(response_data)
     except Exception as e:
         logger.error(f"Error in api_team_performance: {e}", exc_info=True)
