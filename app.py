@@ -1028,28 +1028,25 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
     tasks_completed_count = len(tracked_completed)
     tasks_in_progress_count = len(tasks_in_progress)
 
-    # Get time from tasks' time_spent field (manual time logging)
-    # This is more reliable than time_entries API which only captures timer-based entries
-    total_time_ms = sum(t.get("time_spent_ms", 0) for t in completed_this_week)
+    # Get time from tracked tasks only
+    total_time_ms = sum(t.get("time_spent_ms", 0) for t in tracked_completed)
     total_time_hours = total_time_ms / (1000 * 60 * 60)
 
-    # Calculate average time per score using time_spent_ms from tasks
+    # Calculate average time per score using tracked tasks
     time_per_score = defaultdict(list)
-    for task in completed_this_week:
+    for task in tracked_completed:
         if task["score"] and task.get("time_spent_ms", 0) > 0:
             hours = task["time_spent_ms"] / (1000 * 60 * 60)
             time_per_score[task["score"]].append(hours)
 
-    # Average and efficiency by score
-    # Also track tasks without time tracking for context
+    # Average and efficiency by score (only tracked tasks)
     score_metrics = {}
     for score in [1, 2, 3, 5, 8, 13]:
         times = time_per_score.get(score, [])
         avg_hours = sum(times) / len(times) if times else None
         expected = EXPECTED_HOURS[score]
 
-        # Count completed tasks at this score (with or without time tracking)
-        total_at_score = sum(1 for t in completed_this_week if t["score"] == score)
+        total_at_score = sum(1 for t in tracked_completed if t["score"] == score)
         tasks_with_time = len(times)
 
         efficiency = None
@@ -1074,9 +1071,9 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
             "status": efficiency_status,
         }
 
-    # Score distribution of completed tasks
+    # Score distribution (only tracked tasks)
     score_distribution = defaultdict(int)
-    for task in completed_this_week:
+    for task in tracked_completed:
         if task["score"]:
             score_distribution[task["score"]] += 1
 
