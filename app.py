@@ -996,11 +996,15 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
         if not t["is_complete"] and t["status"].lower() in active_statuses
     ]
 
-    # Calculate points
-    points_completed = sum(t["score"] or 0 for t in completed_this_week)
+    # Split completed tasks: only those with time tracked count toward velocity
+    tracked_completed = [t for t in completed_this_week if t.get("time_spent_ms", 0) > 0]
+    untracked_completed = [t for t in completed_this_week if t.get("time_spent_ms", 0) == 0]
+
+    # Calculate points (only tracked tasks count toward velocity)
+    points_completed = sum(t["score"] or 0 for t in tracked_completed)
     points_next_week = sum(t["score"] or 0 for t in tasks_next_week)
     points_in_progress = sum(t["score"] or 0 for t in tasks_in_progress)
-    tasks_completed_count = len(completed_this_week)
+    tasks_completed_count = len(tracked_completed)
     tasks_in_progress_count = len(tasks_in_progress)
 
     # Get time from tasks' time_spent field (manual time logging)
@@ -1055,7 +1059,7 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
         if task["score"]:
             score_distribution[task["score"]] += 1
 
-    # Daily breakdown (points completed per day)
+    # Daily breakdown (only tracked tasks count)
     daily_breakdown = {}
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     for i in range(7):
@@ -1065,16 +1069,16 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
             "points": 0,
             "tasks": 0,
         }
-    for task in completed_this_week:
+    for task in tracked_completed:
         if task["date_closed"]:
             day_idx = task["date_closed"].weekday()
             day_name = day_names[day_idx]
             daily_breakdown[day_name]["points"] += task["score"] or 0
             daily_breakdown[day_name]["tasks"] += 1
 
-    # Assignee breakdown (points by person, excluding non-Pulse employees)
+    # Assignee breakdown (only tracked tasks, excluding non-Pulse employees)
     assignee_breakdown = defaultdict(lambda: {"points": 0, "tasks": 0, "username": ""})
-    for task in completed_this_week:
+    for task in tracked_completed:
         for assignee in task["assignees"]:
             # Skip excluded assignees
             if assignee["username"] in load_excluded_assignees():
@@ -1089,9 +1093,24 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
     ]
     assignee_list.sort(key=lambda x: x["points"], reverse=True)
 
+    # Untracked tasks (completed but no time logged — excluded from velocity)
+    untracked_tasks = []
+    for task in untracked_completed:
+        untracked_tasks.append({
+            "id": task["id"],
+            "name": task["name"],
+            "score": task["score"],
+            "status": task["status"],
+            "url": task["url"],
+            "assignees": [a["username"] for a in task["assignees"]
+                          if a["username"] not in load_excluded_assignees()],
+        })
+    # Sort by score descending (highest-impact untracked tasks first)
+    untracked_tasks.sort(key=lambda x: x["score"] or 0, reverse=True)
+
     # Underestimated tasks (actual time > expected max for their score)
     underestimated_tasks = []
-    for task in completed_this_week:
+    for task in tracked_completed:
         if task["score"] and task.get("time_spent_ms", 0) > 0:
             actual_hours = task["time_spent_ms"] / (1000 * 60 * 60)
             expected_max = EXPECTED_HOURS[task["score"]]["max"]
@@ -1148,6 +1167,7 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
         "score_distribution": dict(score_distribution),
         "daily_breakdown": daily_breakdown,
         "assignee_breakdown": assignee_list,
+        "untracked_tasks": untracked_tasks,
         "underestimated_tasks": underestimated_tasks[:10],  # Top 10 worst
         "expected_hours_reference": EXPECTED_HOURS,
         # Task details for modal popups
@@ -1558,21 +1578,6 @@ def api_team():
     members = get_pulse_team_members()
     return jsonify(members)
 
-
-@app.route("/api/insights")
-@login_required
-def api_insights():
-    """Get AI-generated insights."""
-    week_offset = int(request.args.get("week_offset", 0))
-    assignee_id = request.args.get("assignee_id")
-    if assignee_id:
-        assignee_id = int(assignee_id)
-
-    metrics = calculate_metrics(week_offset=week_offset, assignee_id=assignee_id)
-    velocity = get_velocity_history(weeks=8, assignee_id=assignee_id)
-    insights = generate_ai_insights(metrics, velocity)
-
-    return jsonify({"insights": insights})
 
 
 @app.route("/api/team-capacity")

@@ -1300,12 +1300,12 @@
                     </div>
                 </div>
             </div>
-            <div class="panel insights-panel">
+            <div class="panel">
                 <div class="panel-title">
-                    <span>🤖</span> Claude Analysis
+                    <span>⏱️</span> Untracked Time
                 </div>
-                <div class="insights-content" id="insights">
-                    <div class="loading"><span class="spinner"></span> Generating insights...</div>
+                <div id="untrackedList" class="underestimated-list">
+                    <div class="loading"><span class="spinner"></span> Loading...</div>
                 </div>
             </div>
         </div>
@@ -1825,8 +1825,8 @@
                 const velocity = await velocityResponse.json();
                 updateVelocityChart(velocity);
 
-                // Load insights
-                loadInsights(assigneeId);
+                // Update untracked time list
+                updateUntrackedList(metrics.untracked_tasks);
 
             } catch (error) {
                 console.error('Error loading data:', error);
@@ -2156,45 +2156,36 @@
             container.innerHTML = html;
         }
 
-        function formatInsightsMarkdown(text) {
-            // Convert markdown to HTML
-            let html = text
-                // Escape HTML first
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                // Headers (## Header)
-                .replace(/^### (.+)$/gm, '<h4 style="margin: 16px 0 8px; color: var(--pulse-primary);">$1</h4>')
-                .replace(/^## (.+)$/gm, '<h3 style="margin: 16px 0 8px; color: var(--pulse-primary);">$1</h3>')
-                .replace(/^# (.+)$/gm, '<h3 style="margin: 16px 0 8px; color: var(--pulse-primary);">$1</h3>')
-                // Bold (**text** or __text__)
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                .replace(/__(.+?)__/g, '<strong>$1</strong>')
-                // Italic (*text* or _text_)
-                .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-                .replace(/_([^_]+)_/g, '<em>$1</em>')
-                // Numbered lists (1. item)
-                .replace(/^\d+\.\s+(.+)$/gm, '<li style="margin-left: 20px; margin-bottom: 8px;">$1</li>')
-                // Bullet lists (- item or * item)
-                .replace(/^[-*]\s+(.+)$/gm, '<li style="margin-left: 20px; margin-bottom: 8px;">$1</li>')
-                // Line breaks
-                .replace(/\n\n/g, '<br><br>')
-                .replace(/\n/g, '<br>');
-            return html;
-        }
+        function updateUntrackedList(tasks) {
+            const container = document.getElementById('untrackedList');
 
-        async function loadInsights(assigneeId) {
-            const insightsDiv = document.getElementById('insights');
-            insightsDiv.innerHTML = '<div class="loading"><span class="spinner"></span> Generating insights...</div>';
-
-            try {
-                const url = `/api/insights?week_offset=${currentWeekOffset}${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
-                const response = await fetch(url);
-                const data = await response.json();
-                insightsDiv.innerHTML = formatInsightsMarkdown(data.insights);
-            } catch (error) {
-                insightsDiv.innerHTML = '<span style="color: var(--text-muted);">Could not load insights.</span>';
+            if (!tasks || tasks.length === 0) {
+                container.innerHTML = '<div class="no-data">All tasks have time tracked!</div>';
+                return;
             }
+
+            let totalPoints = 0;
+            let html = '';
+            tasks.forEach(t => {
+                totalPoints += t.score || 0;
+                const assigneeStr = t.assignees && t.assignees.length > 0
+                    ? t.assignees.join(', ')
+                    : 'Unassigned';
+                html += `
+                    <div class="underestimated-item">
+                        <div class="underestimated-task">
+                            <a href="${t.url}" target="_blank">${t.name}</a>
+                            <div class="underestimated-meta">
+                                ${t.score ? t.score + ' pts' : 'No score'} · ${assigneeStr}
+                            </div>
+                        </div>
+                        <div class="underestimated-overage" style="color: var(--text-muted); font-size: 0.8rem;">No time</div>
+                    </div>
+                `;
+            });
+
+            const header = `<div style="padding: 8px 12px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid var(--border);">${tasks.length} task${tasks.length !== 1 ? 's' : ''} · ${totalPoints} pts not counted toward velocity</div>`;
+            container.innerHTML = header + html;
         }
 
         // ============================================================
