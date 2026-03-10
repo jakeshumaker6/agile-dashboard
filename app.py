@@ -1549,23 +1549,27 @@ def api_team_capacity():
     with actual ClickUp hours logged for the requested week.
     Accepts optional week_offset query param (default 0 = current week).
     """
-    week_offset = int(request.args.get("week_offset", 0))
-    capacity = build_team_capacity()
+    try:
+        week_offset = int(request.args.get("week_offset", 0))
+        capacity = build_team_capacity()
 
-    # Override volatile members with actual ClickUp hours for the requested week
-    mon, sun = get_week_bounds(week_offset=week_offset)
-    all_tasks = get_all_tasks()
-    pulse_members = get_pulse_team_members()
-    for member in pulse_members:
-        name = member["username"]
-        if name in VOLATILE_CAPACITY_MEMBERS and name in capacity:
-            mid = member["id"]
-            member_tasks = [t for t in all_tasks if any(a["id"] == mid for a in t["assignees"])]
-            vol_hours = get_volatile_member_hours(name, member_tasks, mon, sun, member_id=mid)
-            if vol_hours is not None:
-                capacity[name] = vol_hours
+        # Override volatile members with actual ClickUp hours for the requested week
+        mon, sun = get_week_bounds(week_offset=week_offset)
+        all_tasks = get_all_tasks()
+        pulse_members = get_pulse_team_members()
+        for member in pulse_members:
+            name = member["username"]
+            if name in VOLATILE_CAPACITY_MEMBERS and name in capacity:
+                mid = member["id"]
+                member_tasks = [t for t in all_tasks if any(a["id"] == mid for a in t["assignees"])]
+                vol_hours = get_volatile_member_hours(name, member_tasks, mon, sun, member_id=mid)
+                if vol_hours is not None:
+                    capacity[name] = vol_hours
 
-    return jsonify(capacity)
+        return jsonify(capacity)
+    except Exception as e:
+        logger.error(f"Error in api_team_capacity: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/team-capacity", methods=["POST"])

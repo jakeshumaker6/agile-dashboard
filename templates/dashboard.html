@@ -1507,14 +1507,12 @@
 
         async function loadTeamCapacity(weekOffset = 0) {
             // Fetch capacity from server — volatile members' hours change per week
-            try {
-                const response = await fetch(`/api/team-capacity?week_offset=${weekOffset}`);
-                teamCapacity = await response.json();
-                updateCapacitySummary();
-                populateCapacityGrid();
-            } catch (error) {
-                console.error('Error loading team capacity:', error);
+            const response = await fetch(`/api/team-capacity?week_offset=${weekOffset}`);
+            if (!response.ok) {
+                throw new Error(`Team capacity request failed: ${response.status}`);
             }
+            const data = await response.json();
+            return data;
         }
 
         function populateCapacityGrid() {
@@ -1628,7 +1626,16 @@
         document.addEventListener('DOMContentLoaded', async () => {
             loadCacheStatus(); // Show cache status
             loadTeamMembers();
-            await loadTeamCapacity(); // Load capacity first so velocity chart has the data
+            try {
+                const capacityData = await loadTeamCapacity();
+                if (capacityData) {
+                    teamCapacity = capacityData;
+                    updateCapacitySummary();
+                    populateCapacityGrid();
+                }
+            } catch (err) {
+                console.error('Error loading initial capacity:', err);
+            }
             refreshData(true); // true = initial load
         });
 
@@ -1734,6 +1741,8 @@
 
         async function refreshData(showOverlay = false) {
             const thisRequestId = ++refreshRequestId;
+            // Capture weekOffset at start so rapid clicks don't mix up requests
+            const weekOffset = currentWeekOffset;
             const refreshBtn = document.getElementById('refreshBtn');
             const spinner = document.getElementById('refreshSpinner');
             refreshBtn.disabled = true;
@@ -1747,16 +1756,26 @@
             const assigneeId = document.getElementById('assigneeFilter').value;
 
             try {
-                // Load metrics
-                const metricsUrl = `/api/metrics?week_offset=${currentWeekOffset}${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
-                const metricsResponse = await fetch(metricsUrl);
+                // Load metrics and team capacity in parallel
+                const metricsUrl = `/api/metrics?week_offset=${weekOffset}${assigneeId ? '&assignee_id=' + assigneeId : ''}`;
+                const [metricsResponse, capacityData] = await Promise.all([
+                    fetch(metricsUrl),
+                    loadTeamCapacity(weekOffset).catch(err => {
+                        console.error('Error loading team capacity:', err);
+                        return null;
+                    })
+                ]);
                 const metrics = await metricsResponse.json();
 
-                // If a newer request was made while this one was in flight, discard this result
+                // If a newer request was made while these were in flight, discard results
                 if (thisRequestId !== refreshRequestId) return;
 
-                // Reload team capacity for this week (volatile members' hours change per week)
-                await loadTeamCapacity(currentWeekOffset);
+                // Apply capacity data if we got it
+                if (capacityData) {
+                    teamCapacity = capacityData;
+                    updateCapacitySummary();
+                    populateCapacityGrid();
+                }
 
                 // Update week label
                 document.getElementById('weekLabel').textContent = metrics.week.label;
