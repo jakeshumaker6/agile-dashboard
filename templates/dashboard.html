@@ -1693,7 +1693,7 @@
             const subtitleEl = document.getElementById('efficiencySubtitle');
 
             // Remove all level classes
-            card.classList.remove('level-red', 'level-orange', 'level-yellow', 'level-green');
+            card.classList.remove('level-red', 'level-orange', 'level-yellow', 'level-green', 'level-10x');
 
             if (capacity.points <= 0) {
                 valueEl.textContent = '-';
@@ -1809,10 +1809,12 @@
             } catch (error) {
                 console.error('Error loading data:', error);
             } finally {
-                refreshBtn.disabled = false;
-                spinner.style.display = 'none';
-                // Hide loading overlay once data is loaded
-                hideLoading();
+                // Only clean up UI if this is still the latest request
+                if (thisRequestId === refreshRequestId) {
+                    refreshBtn.disabled = false;
+                    spinner.style.display = 'none';
+                    hideLoading();
+                }
             }
         }
 

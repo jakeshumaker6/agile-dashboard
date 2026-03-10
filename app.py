@@ -185,22 +185,36 @@ KNOWN_HOUR_OVERRIDES = {
 VOLATILE_CAPACITY_MEMBERS = {"Jake Shumaker", "Sean Miller"}
 
 
-def get_volatile_member_hours(member_name, member_tasks, monday, sunday, member_id=None):
+def get_volatile_member_hours(member_name, member_tasks, monday, sunday, member_id=None, _entries_cache=None):
     """For volatile members, get actual hours logged in ClickUp during the given week.
 
     Uses the time entries API for accurate per-week tracking (not cumulative
     time_spent on tasks, which doesn't break down by week).
+
+    Pass _entries_cache (dict keyed by member_id) to avoid repeated API calls
+    when computing multiple weeks for the same member.
     """
     if member_name not in VOLATILE_CAPACITY_MEMBERS:
         return None  # Not volatile — use static capacity
 
     # Use time entries API if we have a member ID (accurate per-week hours)
     if member_id:
-        start_ts = int(monday.timestamp() * 1000)
-        end_ts = int(sunday.timestamp() * 1000)
-        entries = get_time_entries(start_ts, end_ts, assignee_id=member_id)
-        total_ms = sum(int(e.get("duration", 0)) for e in entries)
-        return round(total_ms / 3600000, 1)
+        try:
+            start_ts = int(monday.timestamp() * 1000)
+            end_ts = int(sunday.timestamp() * 1000)
+
+            # Check pre-fetched cache first
+            if _entries_cache is not None and member_id in _entries_cache:
+                entries = _entries_cache[member_id]
+                # Filter to this week's range
+                entries = [e for e in entries if start_ts <= int(e.get("start", 0)) <= end_ts]
+            else:
+                entries = get_time_entries(start_ts, end_ts, assignee_id=member_id)
+
+            total_ms = sum(int(e.get("duration", 0)) for e in entries)
+            return round(total_ms / 3600000, 1)
+        except Exception as e:
+            logger.warning(f"Failed to get time entries for {member_name}: {e}")
 
     # Fallback: sum time_spent_ms from completed tasks (less accurate)
     completed = [
@@ -210,6 +224,30 @@ def get_volatile_member_hours(member_name, member_tasks, monday, sunday, member_
     completed += _effectively_completed_in_range(member_tasks, monday, sunday)
     total_ms = sum(t.get("time_spent_ms", 0) for t in completed)
     return round(total_ms / 3600000, 1)
+
+
+def prefetch_volatile_time_entries(pulse_members, weeks=8):
+    """Pre-fetch time entries for all volatile members across N weeks in one API call each.
+
+    Returns a dict keyed by member_id with all entries for the date range.
+    """
+    cache = {}
+    oldest_mon, _ = get_week_bounds(week_offset=-(weeks - 1))
+    _, newest_sun = get_week_bounds(week_offset=0)
+    start_ts = int(oldest_mon.timestamp() * 1000)
+    end_ts = int(newest_sun.timestamp() * 1000)
+
+    for member in pulse_members:
+        if member["username"] in VOLATILE_CAPACITY_MEMBERS:
+            mid = member["id"]
+            try:
+                entries = get_time_entries(start_ts, end_ts, assignee_id=mid)
+                cache[mid] = entries
+                logger.info(f"Pre-fetched {len(entries)} time entries for {member['username']}")
+            except Exception as e:
+                logger.warning(f"Failed to pre-fetch time entries for {member['username']}: {e}")
+                cache[mid] = []
+    return cache
 
 
 def load_capacity_config():
@@ -1960,6 +1998,9 @@ def api_team_performance():
         # Filter out excluded members
         pulse_members = [m for m in pulse_members if m["username"] not in excluded]
 
+        # Pre-fetch time entries for volatile members (1 API call per member, not per week)
+        vol_entries_cache = prefetch_volatile_time_entries(pulse_members, weeks=8)
+
         now = datetime.now()
         results = []
 
@@ -1982,7 +2023,7 @@ def api_team_performance():
                 completed = completed + _effectively_completed_in_range(member_tasks, mon, sun)
                 pts = sum(t["score"] or 0 for t in completed)
                 # For volatile members, track actual hours per week
-                wk_hours = get_volatile_member_hours(name, member_tasks, mon, sun, member_id=mid) if is_volatile else static_hours
+                wk_hours = get_volatile_member_hours(name, member_tasks, mon, sun, member_id=mid, _entries_cache=vol_entries_cache) if is_volatile else static_hours
                 weekly_points.append({"week": mon.strftime("%b %d"), "points": pts, "hours": wk_hours})
                 weekly_tasks.append({"week": mon.strftime("%b %d"), "tasks": len(completed)})
             weekly_points.reverse()
@@ -2030,7 +2071,7 @@ def api_team_performance():
 
             # --- Utilization rate ---
             # For volatile members, compute per-week utilization using that week's actual hours
-            volatile_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun, member_id=mid)
+            volatile_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun, member_id=mid, _entries_cache=vol_entries_cache)
             member_hours = volatile_hours if volatile_hours is not None else capacity.get(name, DEFAULT_MEMBER_HOURS)
             expected_pts = calculate_expected_points_from_hours(member_hours)
 
@@ -2039,7 +2080,7 @@ def api_team_performance():
                 weekly_utils = []
                 for offset in range(0, -4, -1):
                     wk_mon, wk_sun = get_week_bounds(week_offset=offset)
-                    wk_hrs = get_volatile_member_hours(name, member_tasks, wk_mon, wk_sun, member_id=mid) or 0
+                    wk_hrs = get_volatile_member_hours(name, member_tasks, wk_mon, wk_sun, member_id=mid, _entries_cache=vol_entries_cache) or 0
                     wk_expected = calculate_expected_points_from_hours(wk_hrs)
                     # weekly_points is already reversed (oldest first), index from end
                     wk_pts = weekly_points[offset]["points"] if abs(offset) < len(weekly_points) else 0
@@ -2124,6 +2165,13 @@ def api_team_performance_member(member_id):
         # "awaiting response" and "in review" tasks bucketed by date_updated
         is_volatile = member_name in VOLATILE_CAPACITY_MEMBERS
         static_hours = capacity.get(member_name, DEFAULT_MEMBER_HOURS)
+        # Pre-fetch time entries for this member if volatile
+        vol_entries_cache = {}
+        if is_volatile:
+            pulse_members = get_pulse_team_members()
+            vol_entries_cache = prefetch_volatile_time_entries(
+                [m for m in pulse_members if m["id"] == member_id], weeks=8
+            )
         weekly_data = []
         for offset in range(0, -8, -1):
             mon, sun = get_week_bounds(week_offset=offset)
@@ -2134,7 +2182,7 @@ def api_team_performance_member(member_id):
             on_time = sum(1 for t in completed if t["due_date"] and t["date_closed"] <= t["due_date"])
             overdue_count = sum(1 for t in completed if t["due_date"] and t["date_closed"] > t["due_date"])
 
-            wk_hours = get_volatile_member_hours(member_name, member_tasks, mon, sun, member_id=member_id) if is_volatile else static_hours
+            wk_hours = get_volatile_member_hours(member_name, member_tasks, mon, sun, member_id=member_id, _entries_cache=vol_entries_cache) if is_volatile else static_hours
             weekly_data.append({
                 "week": mon.strftime("%b %d"),
                 "week_start": mon.strftime("%Y-%m-%d"),
@@ -2177,7 +2225,7 @@ def api_team_performance_member(member_id):
 
         # Volatile members use actual ClickUp hours for current week
         cur_mon, cur_sun = get_week_bounds(week_offset=0)
-        volatile_hours = get_volatile_member_hours(member_name, member_tasks, cur_mon, cur_sun, member_id=member_id)
+        volatile_hours = get_volatile_member_hours(member_name, member_tasks, cur_mon, cur_sun, member_id=member_id, _entries_cache=vol_entries_cache)
         member_hours = volatile_hours if volatile_hours is not None else capacity.get(member_name, DEFAULT_MEMBER_HOURS)
         expected_pts = calculate_expected_points_from_hours(member_hours)
 
@@ -2232,6 +2280,9 @@ def api_sprint_planning():
 
         pulse_members = [m for m in pulse_members if m["username"] not in excluded]
 
+        # Pre-fetch time entries for volatile members
+        vol_entries_cache = prefetch_volatile_time_entries(pulse_members, weeks=4)
+
         cur_mon, cur_sun = get_week_bounds(week_offset=0)
 
         # ── Backlog: unassigned or status=backlog, not complete ──
@@ -2276,7 +2327,7 @@ def api_sprint_planning():
             completed_points = sum(t["score"] or 0 for t in completed_this_week)
 
             # Capacity — volatile members use actual ClickUp hours for current week
-            volatile_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun, member_id=mid)
+            volatile_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun, member_id=mid, _entries_cache=vol_entries_cache)
             member_hours = volatile_hours if volatile_hours is not None else capacity.get(name, DEFAULT_MEMBER_HOURS)
             expected_pts = calculate_expected_points_from_hours(member_hours)
 
@@ -2344,7 +2395,7 @@ def api_sprint_planning():
             for m in pulse_members:
                 mname = m["username"]
                 m_tasks = [t for t in all_tasks if any(a["id"] == m["id"] for a in t["assignees"])]
-                vol_hrs = get_volatile_member_hours(mname, m_tasks, mon, sun, member_id=m["id"])
+                vol_hrs = get_volatile_member_hours(mname, m_tasks, mon, sun, member_id=m["id"], _entries_cache=vol_entries_cache)
                 hrs = vol_hrs if vol_hrs is not None else capacity.get(mname, DEFAULT_MEMBER_HOURS)
                 planned_pts += calculate_expected_points_from_hours(hrs)
             completion_rate = round((actual_pts / planned_pts) * 100) if planned_pts else 0
