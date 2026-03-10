@@ -1647,12 +1647,13 @@ def api_cache_status():
 @app.route("/api/refresh-cache", methods=["POST"])
 @admin_required
 def api_refresh_cache():
-    """Manually trigger a cache refresh (admin only)."""
+    """Manually trigger a cache refresh (admin only).
+
+    Runs in a background thread to avoid Gunicorn timeout (120s).
+    """
     logger.info("Manual cache refresh triggered")
-    success = refresh_daily_cache()
-    if success:
-        return jsonify({"status": "success", "message": "Cache refreshed successfully"})
-    return jsonify({"status": "error", "message": "Cache refresh failed"}), 500
+    threading.Thread(target=refresh_daily_cache, daemon=True).start()
+    return jsonify({"status": "success", "message": "Cache refresh started in background"})
 
 
 # ============================================================================
