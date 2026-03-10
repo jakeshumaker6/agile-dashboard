@@ -1961,6 +1961,8 @@ def api_team_performance():
 
             # --- 8-week velocity + tasks-per-week ---
             # "awaiting response" and "in review" tasks bucketed by date_updated
+            is_volatile = name in VOLATILE_CAPACITY_MEMBERS
+            static_hours = capacity.get(name, DEFAULT_MEMBER_HOURS)
             weekly_points = []
             weekly_tasks = []
             for offset in range(0, -8, -1):
@@ -1968,7 +1970,9 @@ def api_team_performance():
                 completed = [t for t in member_tasks if t["is_complete"] and t["date_closed"] and mon <= t["date_closed"] <= sun]
                 completed = completed + _effectively_completed_in_range(member_tasks, mon, sun)
                 pts = sum(t["score"] or 0 for t in completed)
-                weekly_points.append({"week": mon.strftime("%b %d"), "points": pts})
+                # For volatile members, track actual hours per week
+                wk_hours = get_volatile_member_hours(name, member_tasks, mon, sun) if is_volatile else static_hours
+                weekly_points.append({"week": mon.strftime("%b %d"), "points": pts, "hours": wk_hours})
                 weekly_tasks.append({"week": mon.strftime("%b %d"), "tasks": len(completed)})
             weekly_points.reverse()
             weekly_tasks.reverse()
@@ -2014,14 +2018,28 @@ def api_team_performance():
             current_week_points = sum(t["score"] or 0 for t in cur_completed)
 
             # --- Utilization rate ---
-            # For volatile members, use actual ClickUp hours for current week
+            # For volatile members, compute per-week utilization using that week's actual hours
             volatile_hours = get_volatile_member_hours(name, member_tasks, cur_mon, cur_sun)
             member_hours = volatile_hours if volatile_hours is not None else capacity.get(name, DEFAULT_MEMBER_HOURS)
             expected_pts = calculate_expected_points_from_hours(member_hours)
-            # Average points over last 4 weeks for utilization
-            last4_pts = [w["points"] for w in weekly_points[-4:]]
-            avg_pts_4w = sum(last4_pts) / len(last4_pts) if last4_pts else 0
-            utilization = round((avg_pts_4w / expected_pts) * 100) if expected_pts else 0
+
+            if name in VOLATILE_CAPACITY_MEMBERS:
+                # Per-week utilization: compare each week's points against that week's hours
+                weekly_utils = []
+                for offset in range(0, -4, -1):
+                    wk_mon, wk_sun = get_week_bounds(week_offset=offset)
+                    wk_hrs = get_volatile_member_hours(name, member_tasks, wk_mon, wk_sun) or 0
+                    wk_expected = calculate_expected_points_from_hours(wk_hrs)
+                    # weekly_points is already reversed (oldest first), index from end
+                    wk_pts = weekly_points[offset]["points"] if abs(offset) < len(weekly_points) else 0
+                    if wk_expected > 0:
+                        weekly_utils.append((wk_pts / wk_expected) * 100)
+                utilization = round(sum(weekly_utils) / len(weekly_utils)) if weekly_utils else 0
+            else:
+                # Static members: average points over last 4 weeks vs fixed capacity
+                last4_pts = [w["points"] for w in weekly_points[-4:]]
+                avg_pts_4w = sum(last4_pts) / len(last4_pts) if last4_pts else 0
+                utilization = round((avg_pts_4w / expected_pts) * 100) if expected_pts else 0
 
             results.append({
                 "id": mid,
@@ -2093,6 +2111,8 @@ def api_team_performance_member(member_id):
 
         # 8-week detailed history
         # "awaiting response" and "in review" tasks bucketed by date_updated
+        is_volatile = member_name in VOLATILE_CAPACITY_MEMBERS
+        static_hours = capacity.get(member_name, DEFAULT_MEMBER_HOURS)
         weekly_data = []
         for offset in range(0, -8, -1):
             mon, sun = get_week_bounds(week_offset=offset)
@@ -2103,6 +2123,7 @@ def api_team_performance_member(member_id):
             on_time = sum(1 for t in completed if t["due_date"] and t["date_closed"] <= t["due_date"])
             overdue_count = sum(1 for t in completed if t["due_date"] and t["date_closed"] > t["due_date"])
 
+            wk_hours = get_volatile_member_hours(member_name, member_tasks, mon, sun) if is_volatile else static_hours
             weekly_data.append({
                 "week": mon.strftime("%b %d"),
                 "week_start": mon.strftime("%Y-%m-%d"),
@@ -2110,6 +2131,7 @@ def api_team_performance_member(member_id):
                 "tasks": len(completed),
                 "on_time": on_time,
                 "overdue": overdue_count,
+                "hours": wk_hours,
             })
         weekly_data.reverse()
 
