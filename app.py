@@ -865,6 +865,12 @@ def parse_task(task: dict, folder_name: str, list_name: str, parent_task_ids: se
     # Get time spent (manual time logging on task)
     time_spent_ms = task.get("time_spent") or 0
 
+    # Get description (text_content is plain text, description may have markdown)
+    description = (task.get("text_content") or task.get("description") or "").strip()
+
+    # Is this a subtask? (has a parent task)
+    is_subtask = bool(task.get("parent"))
+
     return {
         "id": task["id"],
         "name": task["name"],
@@ -880,6 +886,8 @@ def parse_task(task: dict, folder_name: str, list_name: str, parent_task_ids: se
         "assignees": assignees,
         "url": task.get("url", ""),
         "time_spent_ms": time_spent_ms,
+        "description": description,
+        "is_subtask": is_subtask,
     }
 
 
@@ -996,11 +1004,24 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
         if not t["is_complete"] and t["status"].lower() in active_statuses
     ]
 
-    # Split completed tasks: only those with time tracked count toward velocity
-    tracked_completed = [t for t in completed_this_week if t.get("time_spent_ms", 0) > 0]
-    untracked_completed = [t for t in completed_this_week if t.get("time_spent_ms", 0) == 0]
+    # Split completed tasks: exclude from velocity if no time tracked
+    # OR if it's a subtask without a description (can't be properly scored)
+    def _counts_toward_velocity(t):
+        if t.get("time_spent_ms", 0) == 0:
+            return False  # No time tracked
+        if t.get("is_subtask") and not t.get("description"):
+            return False  # Subtask without description
+        return True
 
-    # Calculate points (only tracked tasks count toward velocity)
+    tracked_completed = [t for t in completed_this_week if _counts_toward_velocity(t)]
+    untracked_completed = [t for t in completed_this_week if t.get("time_spent_ms", 0) == 0]
+    # Subtasks missing descriptions (separate from untracked — these may have time but no description)
+    missing_desc_tasks = [
+        t for t in completed_this_week
+        if t.get("is_subtask") and not t.get("description") and t.get("score")
+    ]
+
+    # Calculate points (only qualifying tasks count toward velocity)
     points_completed = sum(t["score"] or 0 for t in tracked_completed)
     points_next_week = sum(t["score"] or 0 for t in tasks_next_week)
     points_in_progress = sum(t["score"] or 0 for t in tasks_in_progress)
@@ -1108,6 +1129,20 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
     # Sort by score descending (highest-impact untracked tasks first)
     untracked_tasks.sort(key=lambda x: x["score"] or 0, reverse=True)
 
+    # Missing description tasks (subtasks with a score but no description — excluded from velocity)
+    missing_desc_list = []
+    for task in missing_desc_tasks:
+        missing_desc_list.append({
+            "id": task["id"],
+            "name": task["name"],
+            "score": task["score"],
+            "status": task["status"],
+            "url": task["url"],
+            "assignees": [a["username"] for a in task["assignees"]
+                          if a["username"] not in load_excluded_assignees()],
+        })
+    missing_desc_list.sort(key=lambda x: x["score"] or 0, reverse=True)
+
     # Underestimated tasks (actual time > expected max for their score)
     underestimated_tasks = []
     for task in tracked_completed:
@@ -1168,6 +1203,7 @@ def _calculate_metrics_impl(week_offset: int = 0, assignee_id: int = None):
         "daily_breakdown": daily_breakdown,
         "assignee_breakdown": assignee_list,
         "untracked_tasks": untracked_tasks,
+        "missing_desc_tasks": missing_desc_list,
         "underestimated_tasks": underestimated_tasks[:10],  # Top 10 worst
         "expected_hours_reference": EXPECTED_HOURS,
         # Task details for modal popups

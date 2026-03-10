@@ -1300,12 +1300,22 @@
                     </div>
                 </div>
             </div>
-            <div class="panel">
-                <div class="panel-title">
-                    <span>⏱️</span> Untracked Time
+            <div>
+                <div class="panel" style="margin-bottom: 24px;">
+                    <div class="panel-title">
+                        <span>⏱️</span> Untracked Time
+                    </div>
+                    <div id="untrackedList" class="underestimated-list">
+                        <div class="loading"><span class="spinner"></span> Loading...</div>
+                    </div>
                 </div>
-                <div id="untrackedList" class="underestimated-list">
-                    <div class="loading"><span class="spinner"></span> Loading...</div>
+                <div class="panel">
+                    <div class="panel-title">
+                        <span>📝</span> Missing Descriptions
+                    </div>
+                    <div id="missingDescList" class="underestimated-list">
+                        <div class="loading"><span class="spinner"></span> Loading...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1828,6 +1838,9 @@
                 // Update untracked time list
                 updateUntrackedList(metrics.untracked_tasks);
 
+                // Update missing descriptions list
+                updateMissingDescList(metrics.missing_desc_tasks);
+
             } catch (error) {
                 console.error('Error loading data:', error);
             } finally {
@@ -2185,6 +2198,38 @@
             });
 
             const header = `<div style="padding: 8px 12px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid var(--border);">${tasks.length} task${tasks.length !== 1 ? 's' : ''} · ${totalPoints} pts not counted toward velocity</div>`;
+            container.innerHTML = header + html;
+        }
+
+        function updateMissingDescList(tasks) {
+            const container = document.getElementById('missingDescList');
+
+            if (!tasks || tasks.length === 0) {
+                container.innerHTML = '<div class="no-data">All subtasks have descriptions!</div>';
+                return;
+            }
+
+            let totalPoints = 0;
+            let html = '';
+            tasks.forEach(t => {
+                totalPoints += t.score || 0;
+                const assigneeStr = t.assignees && t.assignees.length > 0
+                    ? t.assignees.join(', ')
+                    : 'Unassigned';
+                html += `
+                    <div class="underestimated-item">
+                        <div class="underestimated-task">
+                            <a href="${t.url}" target="_blank">${t.name}</a>
+                            <div class="underestimated-meta">
+                                ${t.score} pts · ${assigneeStr}
+                            </div>
+                        </div>
+                        <div class="underestimated-overage" style="color: var(--text-muted); font-size: 0.8rem;">No desc</div>
+                    </div>
+                `;
+            });
+
+            const header = `<div style="padding: 8px 12px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid var(--border);">${tasks.length} subtask${tasks.length !== 1 ? 's' : ''} · ${totalPoints} pts not counted toward velocity</div>`;
             container.innerHTML = header + html;
         }
 
