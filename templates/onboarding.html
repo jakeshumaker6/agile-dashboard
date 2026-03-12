@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onboarding — Pulse</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-hover: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --pulse-navy: #1E2A4A;
+            --bg: #0F1318;
+            --card-bg: #161B24;
+            --card-border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --green: #4ADE80;
+            --red: #F87171;
+            --yellow: #FBBF24;
+            --blue: #60A5FA;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        .sidebar { position: fixed; top: 0; left: -280px; width: 280px; height: 100vh; background: var(--pulse-navy); transition: left 0.3s ease; z-index: 999; padding: 24px 0; }
+        .sidebar.open { left: 0; }
+        .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 998; display: none; }
+        .sidebar-overlay.visible { display: block; }
+        .sidebar-brand { padding: 0 24px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-brand img { height: 36px; border-radius: 6px; }
+        .sidebar-brand span { font-size: 16px; font-weight: 600; color: #fff; }
+        .sidebar-item { padding: 12px 24px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px; font-size: 14px; transition: background 0.2s; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-item.active { background: var(--pulse-primary); color: white; }
+
+        .header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; }
+        .logo-section { display: flex; align-items: center; gap: 16px; }
+        .logo-img { height: 48px; width: auto; border-radius: 8px; }
+        .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
+
+        .container { max-width: 900px; margin: 0 auto; padding: 0 24px 40px; }
+
+        .welcome-banner { background: linear-gradient(135deg, var(--pulse-primary) 0%, var(--pulse-navy) 100%); border-radius: 16px; padding: 32px; margin-bottom: 24px; }
+        .welcome-banner h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+        .welcome-banner p { font-size: 15px; color: rgba(255,255,255,0.85); line-height: 1.6; }
+
+        .progress-overview { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+        .progress-stat { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; text-align: center; }
+        .progress-stat .number { font-size: 28px; font-weight: 700; color: var(--pulse-primary); }
+        .progress-stat .label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+        @media (max-width: 640px) { .progress-overview { grid-template-columns: 1fr 1fr; } }
+
+        .overall-progress { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; }
+        .overall-progress .bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+        .overall-progress .bar-label span:first-child { font-weight: 600; }
+        .overall-progress .bar-label span:last-child { color: var(--text-muted); }
+        .bar-track { height: 8px; background: var(--card-border); border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; background: var(--pulse-primary); border-radius: 4px; transition: width 0.5s ease; }
+
+        .day-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+        .day-tab { flex: 1; padding: 12px 16px; border-radius: 10px; background: var(--card-bg); border: 1px solid var(--card-border); cursor: pointer; text-align: center; transition: all 0.2s; }
+        .day-tab:hover { border-color: var(--text-muted); }
+        .day-tab.active { background: var(--pulse-primary); border-color: var(--pulse-primary); color: white; }
+        .day-tab.locked { opacity: 0.5; cursor: not-allowed; }
+        .day-tab .tab-title { font-size: 14px; font-weight: 600; }
+        .day-tab .tab-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .day-tab.active .tab-sub { color: rgba(255,255,255,0.75); }
+        .day-tab .tab-progress { font-size: 11px; font-weight: 500; margin-top: 6px; color: var(--green); }
+        .day-tab.active .tab-progress { color: rgba(255,255,255,0.9); }
+
+        .day-content { display: none; }
+        .day-content.active { display: block; }
+
+        .touchpoint-card { background: var(--card-bg); border: 1px solid var(--blue); border-left: 4px solid var(--blue); border-radius: 12px; padding: 16px 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
+        .touchpoint-icon { width: 40px; height: 40px; background: rgba(96,165,250,0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .touchpoint-info h4 { font-size: 14px; font-weight: 600; }
+        .touchpoint-info p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        .module-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; transition: all 0.2s; }
+        .module-card:hover { border-color: var(--text-muted); }
+        .module-card.completed { border-color: var(--green); }
+        .module-header { padding: 16px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+        .module-status { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--card-border); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: all 0.3s; }
+        .module-card.completed .module-status { background: var(--green); border-color: var(--green); color: #000; }
+        .module-meta { flex: 1; }
+        .module-meta h4 { font-size: 14px; font-weight: 600; }
+        .module-meta .meta-row { display: flex; gap: 12px; margin-top: 4px; }
+        .module-meta .meta-tag { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+        .module-chevron { color: var(--text-muted); font-size: 18px; transition: transform 0.2s; }
+        .module-card.expanded .module-chevron { transform: rotate(90deg); }
+
+        .module-body { display: none; padding: 0 20px 20px; border-top: 1px solid var(--card-border); }
+        .module-card.expanded .module-body { display: block; padding-top: 16px; }
+        .module-body h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; }
+        .module-body h3:first-child { margin-top: 0; }
+        .module-body h4 { font-size: 14px; font-weight: 600; margin: 12px 0 6px; color: var(--pulse-accent); }
+        .module-body p { font-size: 14px; line-height: 1.7; color: var(--text); margin-bottom: 8px; }
+        .module-body ul, .module-body ol { padding-left: 20px; margin-bottom: 8px; }
+        .module-body li { font-size: 14px; line-height: 1.7; margin-bottom: 4px; }
+        .module-body em { color: var(--text-muted); }
+        .module-body strong { color: var(--pulse-accent); }
+        .module-body code { background: rgba(232,90,113,0.15); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+
+        .loom-embed { position: relative; padding-bottom: 56.25%; height: 0; border-radius: 8px; overflow: hidden; margin: 12px 0; background: var(--card-border); }
+        .loom-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+        .loom-placeholder { display: flex; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; width: 100%; height: 100%; font-size: 14px; color: var(--text-muted); }
+
+        .tool-card { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 16px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 12px; }
+        .tool-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .tool-card p { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+        .tool-check { width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--card-border); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; margin-top: 2px; }
+        .tool-check.confirmed { background: var(--green); border-color: var(--green); color: #000; }
+
+        .form-area { margin-top: 12px; }
+        .form-area textarea { width: 100%; min-height: 100px; padding: 12px; background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit; resize: vertical; }
+        .form-area textarea:focus { outline: none; border-color: var(--pulse-primary); }
+
+        .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: var(--pulse-primary); color: white; }
+        .btn-primary:hover { background: var(--pulse-primary-hover); }
+        .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--card-border); }
+
+        .module-actions { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+
+        .team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+        .team-member { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.5; }
+        @media (max-width: 640px) { .team-grid { grid-template-columns: 1fr; } }
+
+        .client-card { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 16px; margin-bottom: 10px; }
+        .client-card h4 { font-size: 14px; font-weight: 600; color: var(--pulse-accent); margin-bottom: 6px; }
+        .client-card p { font-size: 13px; line-height: 1.5; margin-bottom: 4px; }
+
+        .rating-stars { display: flex; gap: 8px; margin: 12px 0; }
+        .star { width: 36px; height: 36px; border-radius: 8px; border: 2px solid var(--card-border); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; transition: all 0.2s; }
+        .star:hover, .star.active { background: var(--yellow); border-color: var(--yellow); color: #000; }
+
+        .completion-screen { text-align: center; padding: 60px 20px; }
+        .completion-screen h1 { font-size: 36px; font-weight: 700; margin-bottom: 16px; }
+        .completion-screen p { font-size: 16px; color: var(--text-muted); max-width: 500px; margin: 0 auto 24px; line-height: 1.6; }
+
+        .nudge { font-size: 13px; color: var(--pulse-accent); font-style: italic; margin-top: 4px; }
+        .loading { text-align: center; padding: 60px; color: var(--text-muted); }
+        .day-locked { text-align: center; padding: 40px; color: var(--text-muted); }
+        .day-locked .lock-icon { font-size: 48px; margin-bottom: 12px; }
+        .day-locked p { font-size: 14px; }
+
+        .projects-section { margin-top: 8px; margin-bottom: 16px; }
+        .projects-section h3 { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .project-group { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px 20px; margin-bottom: 10px; }
+        .project-group-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+        .project-client { font-size: 13px; font-weight: 600; color: var(--pulse-accent); }
+        .project-name { font-size: 12px; color: var(--text-muted); }
+        .project-task { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--card-border); }
+        .project-task:last-child { border-bottom: none; }
+        .project-task a { color: var(--text); text-decoration: none; }
+        .project-task a:hover { color: var(--pulse-primary); }
+        .task-status { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: rgba(96,165,250,0.12); color: var(--blue); white-space: nowrap; flex-shrink: 0; margin-left: 8px; }
+        .projects-placeholder { font-size: 13px; color: var(--text-muted); padding: 20px; background: var(--card-bg); border: 1px dashed var(--card-border); border-radius: 12px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <img src="/static/logo.jpeg" alt="Pulse"><span>Pulse</span>
+        </div>
+        <a href="/" class="sidebar-item">Home</a>
+        <a href="/onboarding" class="sidebar-item active">Onboarding</a>
+        <a href="/dashboard" class="sidebar-item">Dashboard</a>
+        <a href="/settings" class="sidebar-item">Settings</a>
+    </div>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="header">
+        <div class="logo-section">
+            <button class="hamburger" id="hamburger-btn">&#9776;</button>
+            <img src="/static/logo.jpeg" alt="Pulse" class="logo-img">
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="loading" class="loading">Loading your onboarding...</div>
+        <div id="no-onboarding" style="display:none;" class="loading">
+            <p>No active onboarding found for your account.</p>
+            <p style="margin-top:12px;"><a href="/" style="color:var(--pulse-primary);">Return to Dashboard</a></p>
+        </div>
+        <div id="onboarding-app" style="display:none;">
+            <div class="welcome-banner" id="welcome-banner">
+                <h1 id="welcome-heading">Welcome to Pulse!</h1>
+                <p id="welcome-text">Your onboarding journey starts here. Work through each day at your own pace.</p>
+            </div>
+            <div class="overall-progress">
+                <div class="bar-label">
+                    <span id="progress-label">0% Complete</span>
+                    <span id="progress-detail">0 of 0 modules</span>
+                </div>
+                <div class="bar-track">
+                    <div class="bar-fill" id="progress-bar" style="width:0%"></div>
+                </div>
+                <div class="nudge" id="nudge-text"></div>
+            </div>
+            <div class="progress-overview" id="progress-stats"></div>
+            <div class="day-tabs" id="day-tabs"></div>
+            <div id="day-panels"></div>
+            <div id="completion-screen" class="completion-screen" style="display:none;">
+                <div style="font-size:64px; margin-bottom:16px;">&#127881;</div>
+                <h1>Congratulations!</h1>
+                <p>You've completed your Pulse onboarding. Welcome to the team — we're excited to build with you.</p>
+                <p style="color:var(--pulse-accent); font-weight:600;">Speed is your superpower. Let's go.</p>
+                <a href="/" class="btn btn-primary" style="margin-top:16px;">Go to Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/onboarding.js"></script>
+</body>
+</html>

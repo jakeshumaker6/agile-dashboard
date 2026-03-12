@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onboarding Admin — Pulse</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+    <style>
+        :root {
+            --pulse-primary: #E85A71;
+            --pulse-primary-hover: #D14B62;
+            --pulse-accent: #F4A5AE;
+            --pulse-navy: #1E2A4A;
+            --bg: #0F1318;
+            --card-bg: #161B24;
+            --card-border: #2A3344;
+            --text: #E8EAED;
+            --text-muted: #8B95A5;
+            --green: #4ADE80;
+            --red: #F87171;
+            --yellow: #FBBF24;
+            --blue: #60A5FA;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        .sidebar { position: fixed; top: 0; left: -280px; width: 280px; height: 100vh; background: var(--pulse-navy); transition: left 0.3s ease; z-index: 999; padding: 24px 0; }
+        .sidebar.open { left: 0; }
+        .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 998; display: none; }
+        .sidebar-overlay.visible { display: block; }
+        .sidebar-brand { padding: 0 24px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-brand img { height: 36px; border-radius: 6px; }
+        .sidebar-brand span { font-size: 16px; font-weight: 600; color: #fff; }
+        .sidebar-item { padding: 12px 24px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px; font-size: 14px; transition: background 0.2s; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.05); }
+        .sidebar-item.active { background: var(--pulse-primary); color: white; }
+
+        .header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; }
+        .logo-section { display: flex; align-items: center; gap: 16px; }
+        .logo-img { height: 48px; width: auto; border-radius: 8px; }
+        .hamburger { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 8px; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 24px 40px; }
+        .page-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+        .page-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
+
+        .admin-tabs { display: flex; gap: 4px; margin-bottom: 24px; }
+        .admin-tab { padding: 8px 16px; border-radius: 8px; background: var(--card-bg); border: 1px solid var(--card-border); font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
+        .admin-tab:hover { color: var(--text); border-color: var(--text-muted); }
+        .admin-tab.active { background: var(--pulse-primary); color: white; border-color: var(--pulse-primary); }
+
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+        .stat-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; text-align: center; }
+        .stat-card .number { font-size: 28px; font-weight: 700; color: var(--pulse-primary); }
+        .stat-card .label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
+        @media (max-width: 640px) { .stats-row { grid-template-columns: 1fr 1fr; } }
+
+        .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; padding: 8px 12px; border-bottom: 1px solid var(--card-border); }
+        td { padding: 12px; font-size: 13px; border-bottom: 1px solid var(--card-border); }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+        .badge-active { background: rgba(74,222,128,0.15); color: var(--green); }
+        .badge-completed { background: rgba(96,165,250,0.15); color: var(--blue); }
+        .badge-paused { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge-engineer { background: rgba(232,90,113,0.15); color: var(--pulse-primary); }
+        .badge-general { background: rgba(139,149,165,0.15); color: var(--text-muted); }
+        .badge-all { background: rgba(96,165,250,0.1); color: var(--blue); }
+
+        .mini-bar { width: 80px; height: 6px; background: var(--card-border); border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+        .mini-bar-fill { height: 100%; border-radius: 3px; background: var(--pulse-primary); }
+
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
+        .form-control { width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit; }
+        .form-control:focus { outline: none; border-color: var(--pulse-primary); }
+        select.form-control { appearance: auto; }
+
+        .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: var(--pulse-primary); color: white; }
+        .btn-primary:hover { background: var(--pulse-primary-hover); }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--card-border); }
+        .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+        .btn-danger { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+        .btn-danger:hover { background: rgba(248,113,113,0.25); }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 16px; }
+        .modal-overlay.visible { display: flex; }
+        .modal { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px; padding: 28px; width: 100%; max-height: 90vh; overflow-y: auto; }
+        .modal-sm { max-width: 500px; }
+        .modal-lg { max-width: 720px; }
+        .modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+        .detail-panel { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+        .detail-panel h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; }
+        .detail-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--card-border); }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-row .dl { color: var(--text-muted); }
+
+        .day-filter-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+        .day-filter-tab { padding: 5px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--card-border); font-size: 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; }
+        .day-filter-tab.active { background: var(--pulse-primary); color: white; border-color: var(--pulse-primary); }
+
+        .module-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; margin-bottom: 8px; gap: 12px; }
+        .module-row-info { flex: 1; min-width: 0; }
+        .module-row-info strong { font-size: 14px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .module-row-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .module-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        /* Quill editor dark theme overrides */
+        .ql-toolbar.ql-snow { background: var(--bg); border-color: var(--card-border); border-radius: 8px 8px 0 0; }
+        .ql-container.ql-snow { background: var(--bg); border-color: var(--card-border); border-radius: 0 0 8px 8px; min-height: 180px; color: var(--text); }
+        .ql-toolbar.ql-snow .ql-stroke { stroke: var(--text-muted); }
+        .ql-toolbar.ql-snow .ql-fill { fill: var(--text-muted); }
+        .ql-toolbar.ql-snow button:hover .ql-stroke { stroke: var(--text); }
+        .ql-toolbar.ql-snow button.ql-active .ql-stroke { stroke: var(--pulse-primary); }
+        .ql-editor.ql-blank::before { color: var(--text-muted); font-style: normal; }
+        .ql-snow .ql-picker { color: var(--text-muted); }
+
+        .loading { text-align: center; padding: 40px; color: var(--text-muted); }
+        .alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+        .alert-success { background: rgba(74,222,128,0.15); color: var(--green); }
+        .alert-error { background: rgba(248,113,113,0.15); color: var(--red); }
+    </style>
+</head>
+<body>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <img src="/static/logo.jpeg" alt="Pulse"><span>Pulse</span>
+        </div>
+        <a href="/" class="sidebar-item">Home</a>
+        <a href="/admin/onboarding" class="sidebar-item active">Onboarding Admin</a>
+        <a href="/dashboard" class="sidebar-item">Dashboard</a>
+        <a href="/admin/users" class="sidebar-item">Users</a>
+        <a href="/settings" class="sidebar-item">Settings</a>
+    </div>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="header">
+        <div class="logo-section">
+            <button class="hamburger" id="hamburger-btn">&#9776;</button>
+            <img src="/static/logo.jpeg" alt="Pulse" class="logo-img">
+        </div>
+    </div>
+
+    <div class="container">
+        <h1 class="page-title">Onboarding Admin</h1>
+        <p class="page-subtitle">Manage new hire onboarding, content, and track progress.</p>
+
+        <div id="alert-container"></div>
+
+        <div class="stats-row">
+            <div class="stat-card"><div class="number" id="stat-total">—</div><div class="label">Total</div></div>
+            <div class="stat-card"><div class="number" id="stat-active">—</div><div class="label">Active</div></div>
+            <div class="stat-card"><div class="number" id="stat-completed">—</div><div class="label">Completed</div></div>
+            <div class="stat-card"><div class="number" id="stat-satisfaction">—</div><div class="label">Avg Rating</div></div>
+        </div>
+
+        <div class="admin-tabs">
+            <div class="admin-tab active" data-tab="participants">Participants</div>
+            <div class="admin-tab" data-tab="modules">Modules</div>
+        </div>
+
+        <!-- Participants Panel -->
+        <div class="tab-panel active" id="panel-participants">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="font-size:16px; font-weight:600;">All Participants</h3>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-primary" id="btn-new-participant">+ New Hire</button>
+                    <button class="btn btn-ghost" id="btn-seed">Seed Content</button>
+                </div>
+            </div>
+            <div class="card" style="padding:0; overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr><th>Name</th><th>Track</th><th>Day</th><th>Progress</th><th>Status</th><th>Started</th><th></th></tr>
+                    </thead>
+                    <tbody id="participants-tbody">
+                        <tr><td colspan="7" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Modules Panel -->
+        <div class="tab-panel" id="panel-modules">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="font-size:16px; font-weight:600;">Onboarding Modules</h3>
+                <button class="btn btn-primary" id="btn-add-module">+ Add Module</button>
+            </div>
+            <div class="day-filter-tabs">
+                <div class="day-filter-tab active" data-day="1">Day 1</div>
+                <div class="day-filter-tab" data-day="2">Day 2</div>
+                <div class="day-filter-tab" data-day="3">Day 3</div>
+            </div>
+            <div id="modules-list"><div class="loading">Loading...</div></div>
+        </div>
+    </div>
+
+    <!-- New Participant Modal -->
+    <div class="modal-overlay" id="modal-new">
+        <div class="modal modal-sm">
+            <h2>Initiate Onboarding</h2>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" class="form-control" id="inp-name" placeholder="Jane Doe">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" class="form-control" id="inp-email" placeholder="jane@pulsemarketing.co">
+            </div>
+            <div class="form-group">
+                <label>Track</label>
+                <select class="form-control" id="inp-track">
+                    <option value="general">General</option>
+                    <option value="engineer">Engineer</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" class="form-control" id="inp-start-date">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" id="btn-cancel-new">Cancel</button>
+                <button class="btn btn-primary" id="btn-save-new">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Participant Detail Modal -->
+    <div class="modal-overlay" id="modal-detail">
+        <div class="modal modal-lg">
+            <h2 id="detail-name">Participant</h2>
+            <div id="detail-content"></div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" id="btn-close-detail">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Module Editor Modal -->
+    <div class="modal-overlay" id="modal-module">
+        <div class="modal modal-lg">
+            <h2 id="module-modal-title">Edit Module</h2>
+            <input type="hidden" id="mod-id">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label>Title</label>
+                    <input type="text" class="form-control" id="mod-title" placeholder="Module title">
+                </div>
+                <div class="form-group">
+                    <label>Day</label>
+                    <select class="form-control" id="mod-day">
+                        <option value="1">Day 1</option>
+                        <option value="2">Day 2</option>
+                        <option value="3">Day 3</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Slug</label>
+                    <input type="text" class="form-control" id="mod-slug" placeholder="unique-slug">
+                </div>
+                <div class="form-group">
+                    <label>Content Type</label>
+                    <select class="form-control" id="mod-type">
+                        <option value="text">Text</option>
+                        <option value="loom">Loom</option>
+                        <option value="checklist">Checklist</option>
+                        <option value="form">Form</option>
+                        <option value="exercise">Exercise</option>
+                        <option value="mixed">Mixed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Track</label>
+                    <select class="form-control" id="mod-track">
+                        <option value="all">All</option>
+                        <option value="engineer">Engineer</option>
+                        <option value="general">General</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Est. Minutes</label>
+                    <input type="number" class="form-control" id="mod-minutes" value="15" min="1" max="120">
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label>Loom URL (optional)</label>
+                    <input type="url" class="form-control" id="mod-loom" placeholder="https://www.loom.com/share/...">
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label>Content</label>
+                    <div id="quill-editor"></div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" id="btn-cancel-module">Cancel</button>
+                <button class="btn btn-primary" id="btn-save-module">Save Module</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+    <script src="/static/js/admin-onboarding.js"></script>
+</body>
+</html>

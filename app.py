@@ -24,6 +24,7 @@ from client_mappings import load_mappings, save_email_mapping, save_grain_match
 from auth import auth_bp, login_required, admin_required, init_db as init_auth_db
 from eos import eos_bp, init_eos_db
 from capacity_planning import cp_bp, init_cp_db, sync_projects_from_clickup as cp_sync
+from onboarding import onboarding_bp, onboarding_admin_bp, init_onboarding_db
 from auth.user_sync import sync_users_from_clickup
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -82,6 +83,8 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 app.register_blueprint(auth_bp)
 app.register_blueprint(eos_bp)
 app.register_blueprint(cp_bp)
+app.register_blueprint(onboarding_bp)
+app.register_blueprint(onboarding_admin_bp)
 
 
 @app.before_request
@@ -94,6 +97,7 @@ def _clear_request_caches():
 init_auth_db()
 init_eos_db()
 init_cp_db()
+init_onboarding_db()
 
 # Auto-sync capacity planning projects on startup if DB is empty
 def _cp_initial_sync():

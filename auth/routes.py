@@ -87,6 +87,10 @@ def login():
                     return redirect(url_for('auth.verify_2fa'))
 
                 logger.info(f"User logged in: {email}")
+                # Auto-link participant and enforce onboarding role
+                _apply_onboarding_role_if_needed(user)
+                if session.get('role') == 'onboarding':
+                    return redirect(url_for('onboarding.onboarding_page'))
                 return redirect(url_for('home'))
 
     return render_template('login.html', error=error)
@@ -111,6 +115,27 @@ def _create_session(user: dict):
     session['role'] = user['role']
     session['totp_enabled'] = bool(user.get('totp_enabled'))
     session['last_2fa_at'] = user.get('last_2fa_at')
+
+
+def _apply_onboarding_role_if_needed(user: dict):
+    """Auto-link participant and set onboarding role if an active participant exists.
+
+    Called on login success so users added as participants before their auth
+    account existed get the correct role restriction on first sign-in.
+    """
+    if user.get('role') == 'admin':
+        return
+    try:
+        from onboarding.db import get_active_participant_by_email, link_participant_to_user
+        participant = get_active_participant_by_email(user['email'])
+        if not participant:
+            return
+        link_participant_to_user(user['email'], user['id'])
+        if session.get('role') != 'onboarding':
+            update_user(user['id'], role='onboarding')
+            session['role'] = 'onboarding'
+    except Exception as exc:
+        logger.warning("Could not apply onboarding role for %s: %s", user['email'], exc)
 
 
 # ============ 2FA Setup ============
@@ -238,6 +263,9 @@ def verify_2fa():
                 session.pop('pending_2fa', None)
 
                 logger.info(f"2FA verified for user: {user['email']}")
+                _apply_onboarding_role_if_needed(user)
+                if session.get('role') == 'onboarding':
+                    return redirect(url_for('onboarding.onboarding_page'))
                 return redirect(url_for('home'))
             else:
                 error = "Invalid verification code. Please try again."
@@ -460,7 +488,7 @@ def api_update_user_role(user_id):
     data = request.get_json()
     role = data.get('role')
 
-    if role not in ['admin', 'regular']:
+    if role not in ['admin', 'regular', 'onboarding']:
         return jsonify({'error': 'Invalid role'}), 400
 
     # Prevent removing your own admin role

@@ -74,6 +74,18 @@ def login_required(f):
                 return jsonify({'error': '2FA verification required'}), 403
             return redirect(url_for('auth.verify_2fa'))
 
+        # Restrict onboarding-role users to the onboarding wizard only
+        if session.get('role') == 'onboarding':
+            if request.path.startswith('/api/'):
+                if not request.path.startswith('/api/onboarding/'):
+                    return jsonify({'error': 'Complete onboarding first'}), 403
+            elif (
+                not request.path.startswith('/onboarding')
+                and not request.path.startswith('/static/')
+                and request.path != '/logout'
+            ):
+                return redirect(url_for('onboarding.onboarding_page'))
+
         return f(*args, **kwargs)
     return decorated_function
 
