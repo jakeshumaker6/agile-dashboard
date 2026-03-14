@@ -148,6 +148,11 @@
             color: var(--text-muted);
         }
 
+        .badge-onboarding {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--warning);
+        }
+
         .badge-active {
             background: rgba(74, 222, 128, 0.2);
             color: var(--success);
@@ -319,8 +324,8 @@
                             <div class="user-name">{{ user.username }}</div>
                         </td>
                         <td>
-                            <span class="badge {% if user.role == 'admin' %}badge-admin{% else %}badge-regular{% endif %}">
-                                {{ user.role | capitalize }}
+                            <span class="badge {% if user.role == 'admin' %}badge-admin{% elif user.role == 'onboarding' %}badge-onboarding{% else %}badge-regular{% endif %}">
+                                {% if user.role == 'onboarding' %}New Hire{% else %}{{ user.role | capitalize }}{% endif %}
                             </span>
                         </td>
                         <td>
@@ -357,8 +362,12 @@
                             <div class="actions-cell">
                                 {% if user.role == 'admin' %}
                                 <button class="action-btn demote" onclick="updateRole({{ user.id }}, 'regular')">Demote</button>
+                                {% elif user.role == 'onboarding' %}
+                                <button class="action-btn promote" onclick="updateRole({{ user.id }}, 'admin')">Promote</button>
+                                <button class="action-btn demote" onclick="updateRole({{ user.id }}, 'regular')">Regular</button>
                                 {% else %}
                                 <button class="action-btn promote" onclick="updateRole({{ user.id }}, 'admin')">Promote</button>
+                                <button class="action-btn" style="border-color:var(--warning);color:var(--warning);" onclick="openNewHireModal({{ user.id }}, '{{ user.username | e }}', '{{ user.email | e }}')">Set as New Hire</button>
                                 {% endif %}
 
                                 {% if not user.password_hash %}
@@ -400,6 +409,36 @@
                     <button class="btn btn-primary" onclick="addExcludedFromDropdown()">Add</button>
                     <button class="btn btn-secondary" onclick="saveExcluded()">Save</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Hire Modal -->
+    <div id="modal-new-hire" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1100;align-items:center;justify-content:center;">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:420px;margin:0 20px;">
+            <h3 style="font-size:17px;font-weight:600;margin-bottom:20px;">Set as New Hire</h3>
+            <div style="margin-bottom:14px;">
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Name</div>
+                <div id="nh-name" style="font-size:14px;font-weight:500;"></div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Email</div>
+                <div id="nh-email" style="font-size:14px;color:var(--text-muted);"></div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;">Track</label>
+                <select id="nh-track" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:14px;font-family:inherit;">
+                    <option value="general">General</option>
+                    <option value="engineer">Engineer</option>
+                </select>
+            </div>
+            <div style="margin-bottom:22px;">
+                <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;">Start Date</label>
+                <input type="date" id="nh-start-date" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:14px;font-family:inherit;">
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeNewHireModal()">Cancel</button>
+                <button class="btn btn-primary" id="nh-submit-btn" onclick="submitNewHire()">Start Onboarding</button>
             </div>
         </div>
     </div>
@@ -593,6 +632,55 @@
                 else showToast('Failed to save', 'error');
             } catch (e) { showToast('Error saving', 'error'); }
         }
+
+        // --- New Hire Modal ---
+        var _nhUserId = null;
+
+        function openNewHireModal(userId, name, email) {
+            _nhUserId = userId;
+            document.getElementById('nh-name').textContent = name;
+            document.getElementById('nh-email').textContent = email;
+            document.getElementById('nh-track').value = 'general';
+            document.getElementById('nh-start-date').value = '';
+            document.getElementById('modal-new-hire').style.display = 'flex';
+        }
+
+        function closeNewHireModal() {
+            document.getElementById('modal-new-hire').style.display = 'none';
+            _nhUserId = null;
+        }
+
+        async function submitNewHire() {
+            var name = document.getElementById('nh-name').textContent.trim();
+            var email = document.getElementById('nh-email').textContent.trim();
+            var track = document.getElementById('nh-track').value;
+            var startDate = document.getElementById('nh-start-date').value;
+            if (!startDate) { showToast('Please set a start date.', 'error'); return; }
+            var btn = document.getElementById('nh-submit-btn');
+            btn.disabled = true;
+            btn.textContent = 'Starting…';
+            try {
+                const res = await fetch('/api/admin/onboarding/participants', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, email: email, track: track, start_date: startDate })
+                });
+                const data = await res.json();
+                if (!res.ok) { showToast(data.error || 'Failed to start onboarding.', 'error'); return; }
+                closeNewHireModal();
+                showToast(name + ' has been set as a new hire. Onboarding initiated.');
+                setTimeout(() => location.reload(), 1500);
+            } catch (err) {
+                showToast('Network error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Start Onboarding';
+            }
+        }
+
+        document.getElementById('modal-new-hire').addEventListener('click', function(e) {
+            if (e.target === this) closeNewHireModal();
+        });
 
         loadTeamMembers();
         loadExcluded();
