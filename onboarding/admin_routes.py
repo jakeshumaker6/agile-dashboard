@@ -27,7 +27,6 @@ from onboarding.db import (
 )
 from onboarding.integrations import (
     create_first_ticket,
-    generate_welcome_message,
     send_welcome_email,
 )
 from onboarding.seed_content import seed_all_modules
@@ -108,12 +107,6 @@ def api_create_participant():
     if auth_user and auth_user["role"] not in ("admin",):
         update_user(auth_user["id"], role="onboarding")
         logger.info("Set onboarding role for auth user: %s", email)
-
-    # Generate AI welcome message and send welcome email (non-blocking)
-    welcome = generate_welcome_message(participant)
-    if welcome:
-        update_participant(participant["id"], welcome_message=welcome)
-        participant = get_participant(participant["id"])
 
     touchpoints = participant.get("touchpoint_schedule")
     send_welcome_email(participant, touchpoints)

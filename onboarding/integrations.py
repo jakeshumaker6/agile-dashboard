@@ -180,30 +180,20 @@ def send_welcome_email(participant: dict, touchpoint_schedule=None) -> bool:
     name = participant.get("name", "")
     first_name = name.split()[0] if name else "there"
     email = participant.get("email", "")
-    start_date = participant.get("start_date", "")
-    track = participant.get("track", "general")
 
     touchpoint_html = _build_touchpoint_html(touchpoint_schedule)
-    track_note = (
-        "You're joining as an <strong>Engineer</strong> — Day 2 includes a "
-        "technical deep-dive specific to your role."
-        if track == "engineer"
-        else "You're joining as a <strong>General team member</strong> — "
-        "your track is crafted around your contribution area."
-    )
 
     html = f"""
 <div style="font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
             max-width:600px;margin:0 auto;padding:40px 20px;background:#0F1318;color:#E8EAED;">
-  <h1 style="color:#E85A71;margin:0 0 8px;">Welcome to Pulse, {first_name}!</h1>
-  <p style="color:#A0AEC0;margin:0 0 24px;font-size:14px;">Your onboarding starts {start_date}</p>
+  <h1 style="color:#E85A71;margin:0 0 24px;">Welcome to Pulse, {first_name}!</h1>
 
-  <p style="font-size:16px;line-height:1.6;">
-    We're thrilled to have you on the team. Your structured 3-day onboarding
-    is ready and waiting at the link below.
+  <p style="font-size:16px;line-height:1.6;margin:0 0 8px;">
+    We're thrilled to have you on the team.
   </p>
-
-  <p style="font-size:14px;color:#A0AEC0;">{track_note}</p>
+  <p style="font-size:16px;line-height:1.6;margin:0 0 24px;">
+    Your onboarding is ready and waiting at the link below.
+  </p>
 
   <h3 style="color:#E85A71;margin:24px 0 8px;">What to expect</h3>
   <ul style="padding-left:20px;line-height:1.8;font-size:15px;">
@@ -233,7 +223,7 @@ def send_welcome_email(participant: dict, touchpoint_schedule=None) -> bool:
         params = {
             "from": FROM_EMAIL,
             "to": [email],
-            "subject": f"Welcome to Pulse, {first_name} \u2014 Your onboarding starts {start_date}",
+            "subject": f"Welcome to Pulse, {first_name}!",
             "html": html,
         }
         response = resend.Emails.send(params)
