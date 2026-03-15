@@ -414,31 +414,78 @@
     </div>
 
     <!-- New Hire Modal -->
-    <div id="modal-new-hire" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1100;align-items:center;justify-content:center;">
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:420px;margin:0 20px;">
+    <div id="modal-new-hire" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1100;align-items:center;justify-content:center;overflow-y:auto;padding:20px 0;">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:560px;margin:auto 20px;">
             <h3 style="font-size:17px;font-weight:600;margin-bottom:20px;">Set as New Hire</h3>
-            <div style="margin-bottom:14px;">
-                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Name</div>
-                <div id="nh-name" style="font-size:14px;font-weight:500;"></div>
+
+            <!-- Identity -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                <div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Name</div>
+                    <div id="nh-name" style="font-size:14px;font-weight:500;"></div>
+                </div>
+                <div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Email</div>
+                    <div id="nh-email" style="font-size:14px;color:var(--text-muted);word-break:break-all;"></div>
+                </div>
             </div>
-            <div style="margin-bottom:14px;">
-                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Email</div>
-                <div id="nh-email" style="font-size:14px;color:var(--text-muted);"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+                <div>
+                    <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;">Track</label>
+                    <select id="nh-track" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:14px;font-family:inherit;">
+                        <option value="general">General</option>
+                        <option value="engineer">Engineer</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;">Start Date</label>
+                    <input type="date" id="nh-start-date" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:14px;font-family:inherit;">
+                </div>
             </div>
-            <div style="margin-bottom:14px;">
-                <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;">Track</label>
-                <select id="nh-track" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:14px;font-family:inherit;">
-                    <option value="general">General</option>
-                    <option value="engineer">Engineer</option>
-                </select>
+
+            <!-- Touchpoints -->
+            <div style="border-top:1px solid var(--border);padding-top:18px;margin-bottom:18px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Touchpoints <span style="font-weight:400;color:var(--text-muted);">(optional)</span></div>
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Scheduled calls shown to the new hire on each day of the wizard.</div>
+                <div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px;">
+                    <div></div>
+                    <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Title</div>
+                    <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Time</div>
+                    <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Participants</div>
+                </div>
+                <div id="nh-touchpoints">
+                    <div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:11px;font-weight:600;color:var(--text-muted);">D1</span>
+                        <input type="text" class="nh-tp-title" data-day="1" placeholder="e.g. Onboarding Call" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                        <input type="text" class="nh-tp-time" data-day="1" placeholder="e.g. 9:00 AM" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                        <input type="text" class="nh-tp-participants" data-day="1" placeholder="e.g. Jake" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                    </div>
+                    <div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:11px;font-weight:600;color:var(--text-muted);">D2</span>
+                        <input type="text" class="nh-tp-title" data-day="2" placeholder="e.g. Tool Setup Review" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                        <input type="text" class="nh-tp-time" data-day="2" placeholder="e.g. 10:00 AM" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                        <input type="text" class="nh-tp-participants" data-day="2" placeholder="e.g. Jake" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                    </div>
+                    <div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr;gap:6px;align-items:center;">
+                        <span style="font-size:11px;font-weight:600;color:var(--text-muted);">D3</span>
+                        <input type="text" class="nh-tp-title" data-day="3" placeholder="e.g. Project Kickoff" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                        <input type="text" class="nh-tp-time" data-day="3" placeholder="e.g. 11:00 AM" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                        <input type="text" class="nh-tp-participants" data-day="3" placeholder="e.g. Jake" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:12px;font-family:inherit;width:100%;">
+                    </div>
+                </div>
             </div>
-            <div style="margin-bottom:22px;">
-                <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;">Start Date</label>
-                <input type="date" id="nh-start-date" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);font-size:14px;font-family:inherit;">
+
+            <!-- First ticket -->
+            <div style="border-top:1px solid var(--border);padding-top:18px;margin-bottom:22px;">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                    <input type="checkbox" id="nh-create-ticket" style="width:16px;height:16px;accent-color:var(--pulse-primary);">
+                    <span style="font-size:13px;">Auto-create first ClickUp task for this hire</span>
+                </label>
             </div>
+
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button class="btn btn-secondary" onclick="closeNewHireModal()">Cancel</button>
-                <button class="btn btn-primary" id="nh-submit-btn" onclick="submitNewHire()">Start Onboarding</button>
+                <button class="btn btn-primary" id="nh-submit-btn" onclick="submitNewHire()">Start Onboarding &amp; Send Email</button>
             </div>
         </div>
     </div>
@@ -642,6 +689,8 @@
             document.getElementById('nh-email').textContent = email;
             document.getElementById('nh-track').value = 'general';
             document.getElementById('nh-start-date').value = '';
+            document.getElementById('nh-create-ticket').checked = false;
+            document.querySelectorAll('.nh-tp-title, .nh-tp-time, .nh-tp-participants').forEach(function(el) { el.value = ''; });
             document.getElementById('modal-new-hire').style.display = 'flex';
         }
 
@@ -655,26 +704,43 @@
             var email = document.getElementById('nh-email').textContent.trim();
             var track = document.getElementById('nh-track').value;
             var startDate = document.getElementById('nh-start-date').value;
+            var createTicket = document.getElementById('nh-create-ticket').checked;
             if (!startDate) { showToast('Please set a start date.', 'error'); return; }
+
+            var touchpoints = [];
+            [1, 2, 3].forEach(function(day) {
+                var title = (document.querySelector('.nh-tp-title[data-day="' + day + '"]').value || '').trim();
+                var time = (document.querySelector('.nh-tp-time[data-day="' + day + '"]').value || '').trim();
+                var participants = (document.querySelector('.nh-tp-participants[data-day="' + day + '"]').value || '').trim();
+                if (title) touchpoints.push({ day: day, title: title, time: time, participants: participants });
+            });
+
             var btn = document.getElementById('nh-submit-btn');
             btn.disabled = true;
             btn.textContent = 'Starting…';
             try {
+                var payload = { name: name, email: email, track: track, start_date: startDate };
+                if (touchpoints.length > 0) payload.touchpoint_schedule = JSON.stringify(touchpoints);
                 const res = await fetch('/api/admin/onboarding/participants', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name, email: email, track: track, start_date: startDate })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (!res.ok) { showToast(data.error || 'Failed to start onboarding.', 'error'); return; }
+
+                if (createTicket && data.participant && data.participant.id) {
+                    await fetch('/api/admin/onboarding/participants/' + data.participant.id + '/create-ticket', { method: 'POST' });
+                }
+
                 closeNewHireModal();
-                showToast(name + ' has been set as a new hire. Onboarding initiated.');
+                showToast(name + ' has been set as a new hire. Welcome email sent.');
                 setTimeout(() => location.reload(), 1500);
             } catch (err) {
                 showToast('Network error. Please try again.', 'error');
             } finally {
                 btn.disabled = false;
-                btn.textContent = 'Start Onboarding';
+                btn.textContent = 'Start Onboarding & Send Email';
             }
         }
 
